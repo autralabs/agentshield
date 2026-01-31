@@ -3,6 +3,9 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+.claude/
+ARCHITECTURE.md
+
 # C extensions
 *.so
 
