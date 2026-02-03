@@ -1,4 +1,4 @@
-# RagShield
+# AgentShield
 
 Prompt injection detection for RAG pipelines using ZEDD (Zero-Shot Embedding Drift Detection).
 
