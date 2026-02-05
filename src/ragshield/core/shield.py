@@ -23,7 +23,7 @@ class RagShield:
     Main entry point for RagShield functionality.
 
     Orchestrates the detection pipeline:
-    1. Clean text (heuristic or LLM)
+    1. Clean text (heuristic, finetuned, LLM, or hybrid)
     2. Generate embeddings
     3. Run ZEDD detection
     4. Return results
@@ -37,6 +37,25 @@ class RagShield:
     With custom config:
         >>> shield = RagShield(config={"zedd": {"threshold": 0.2}})
         >>> shield = RagShield(config="path/to/config.yaml")
+
+    With finetuned cleaner:
+        >>> shield = RagShield(config={
+        ...     "cleaning": {
+        ...         "method": "finetuned",
+        ...         "finetuned": {"model_id": "ragshield/cleaner-phi2-lora"}
+        ...     }
+        ... })
+
+    With hybrid cleaner:
+        >>> shield = RagShield(config={
+        ...     "cleaning": {
+        ...         "method": "hybrid",
+        ...         "hybrid": {
+        ...             "methods": ["heuristic", "finetuned"],
+        ...             "mode": "sequential"
+        ...         }
+        ...     }
+        ... })
     """
 
     def __init__(
@@ -111,21 +130,74 @@ class RagShield:
             return OpenAIEmbeddingProvider(
                 model_name=self.config.embeddings.openai_model,
             )
+        elif self.config.embeddings.provider == "mlx":
+            from ragshield.providers.mlx import MLXEmbeddingProvider
+
+            return MLXEmbeddingProvider(
+                model_name=self.config.embeddings.model,
+                cache_embeddings=self.config.performance.cache_embeddings,
+                cache_dir=self.config.embeddings.mlx_cache_dir,
+                convert_from_hf=self.config.embeddings.mlx_convert_from_hf,
+            )
         else:
             raise ValueError(f"Unknown embedding provider: {self.config.embeddings.provider}")
 
     def _create_text_cleaner(self) -> TextCleaner:
         """Create text cleaner based on config."""
-        if self.config.zedd.cleaning_method == "heuristic":
+        method = self.config.cleaning.method
+
+        if method == "heuristic":
             from ragshield.cleaning.heuristic import HeuristicCleaner
-
             return HeuristicCleaner()
-        elif self.config.zedd.cleaning_method == "llm":
-            from ragshield.cleaning.llm import LLMCleaner
 
-            return LLMCleaner(model=self.config.zedd.llm_model)
+        elif method == "llm":
+            from ragshield.cleaning.llm import LLMCleaner
+            return LLMCleaner(model=self.config.cleaning.llm_model)
+
+        elif method == "finetuned":
+            from ragshield.cleaning.finetuned import FinetunedCleaner
+
+            ft_config = self.config.cleaning.finetuned
+            return FinetunedCleaner(
+                model_id=ft_config.model_id,
+                model_path=ft_config.model_path,
+                base_model=ft_config.base_model,
+                use_lora=ft_config.use_lora,
+                device=ft_config.device,
+                load_in_4bit=ft_config.load_in_4bit,
+                load_in_8bit=ft_config.load_in_8bit,
+                max_new_tokens=ft_config.max_new_tokens,
+                temperature=ft_config.temperature,
+                torch_dtype=ft_config.torch_dtype,
+            )
+
+        elif method == "hybrid":
+            from ragshield.cleaning.hybrid import create_hybrid_cleaner
+
+            hybrid_config = self.config.cleaning.hybrid
+            ft_config = self.config.cleaning.finetuned
+
+            return create_hybrid_cleaner(
+                methods=hybrid_config.methods,
+                mode=hybrid_config.mode,
+                vote_threshold=hybrid_config.vote_threshold,
+                weights=hybrid_config.weights,
+                # Pass finetuned config for any finetuned cleaners in hybrid
+                model_id=ft_config.model_id,
+                model_path=ft_config.model_path,
+                base_model=ft_config.base_model,
+                use_lora=ft_config.use_lora,
+                device=ft_config.device,
+                load_in_4bit=ft_config.load_in_4bit,
+                load_in_8bit=ft_config.load_in_8bit,
+                max_new_tokens=ft_config.max_new_tokens,
+                temperature=ft_config.temperature,
+                # Pass LLM config for any LLM cleaners in hybrid
+                llm_model=self.config.cleaning.llm_model,
+            )
+
         else:
-            raise ValueError(f"Unknown cleaning method: {self.config.zedd.cleaning_method}")
+            raise ValueError(f"Unknown cleaning method: {method}")
 
     def _create_threshold_manager(self) -> ThresholdManager:
         """Create threshold manager."""
@@ -179,6 +251,7 @@ class RagShield:
         # Build details
         drift_score = signal.metadata.get("drift")
         threshold = signal.metadata.get("threshold")
+        cleaning_method = signal.metadata.get("cleaning_method", self.config.cleaning.method)
 
         if is_suspicious:
             summary = f"Potential injection detected (drift={drift_score:.4f}, threshold={threshold:.4f})"
@@ -192,6 +265,7 @@ class RagShield:
             risk_factors=risk_factors,
             drift_score=drift_score,
             threshold=threshold,
+            cleaning_method=cleaning_method,
         )
 
         return ScanResult(
@@ -234,3 +308,21 @@ class RagShield:
             )
 
         return threshold
+
+    def get_cleaner_info(self) -> Dict[str, Any]:
+        """
+        Get information about the current cleaner configuration.
+
+        Returns:
+            Dictionary with cleaner details
+        """
+        cleaner = self.text_cleaner
+        return {
+            "method": cleaner.method,
+            "config": {
+                "primary_method": self.config.cleaning.method,
+                "llm_model": self.config.cleaning.llm_model,
+                "finetuned": self.config.cleaning.finetuned.model_dump(),
+                "hybrid": self.config.cleaning.hybrid.model_dump(),
+            },
+        }

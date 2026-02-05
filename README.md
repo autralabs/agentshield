@@ -15,6 +15,8 @@ RagShield implements the ZEDD algorithm from [arXiv:2601.12359v1](https://arxiv.
 
 The key insight: malicious injections cause measurable semantic drift when removed, while clean text remains stable.
 
+> **Note:** The file `Zero_Shot_Embedding_Drift_Detection_A_Lightweight_Defense_Against_Prompt_Injections_in_LLMs.ipynb` in this repository is the original notebook from the ZEDD paper authors, included here as reference material. It is not part of the RagShield codebase.
+
 ## Installation
 
 ### Basic Installation
@@ -35,7 +37,7 @@ pip install ragshield[cli]
 pip install ragshield[langchain]
 ```
 
-### With OpenAI Embeddings
+### With OpenAI (for LLM cleaning)
 
 ```bash
 pip install ragshield[openai]
@@ -72,6 +74,33 @@ print(result.is_suspicious)  # True
 print(result.confidence)     # 0.87
 ```
 
+### Using a Finetuned Model
+
+```python
+from ragshield import RagShield
+
+shield = RagShield(config={
+    "embeddings": {
+        "provider": "local",
+        "model": "./ragshield-embeddings-finetuned",  # Your finetuned model
+    },
+    "cleaning": {
+        "method": "llm",           # Use LLM for better accuracy
+        "llm_model": "gpt-4o-mini",
+    },
+    "zedd": {
+        "threshold": None,  # Auto-load from model's calibration.json
+    },
+    "behavior": {
+        "on_detect": "flag",  # Options: block, warn, flag, filter
+    },
+})
+
+result = shield.scan("Some text to scan...")
+print(f"Suspicious: {result.is_suspicious}")
+print(f"Confidence: {result.confidence:.2%}")
+```
+
 ### Decorator for Functions
 
 ```python
@@ -104,6 +133,72 @@ chain = retriever | ShieldRunnable(on_detect="filter") | prompt | llm
 # - on_detect="filter": Remove suspicious documents silently
 # - on_detect="flag": Add _ragshield metadata to documents
 # - on_detect="warn": Log warnings but pass through
+```
+
+## Finetuning Your Own Model
+
+For best accuracy (~95%), finetune the embedding model on your data.
+
+### Step 1: Install Dependencies
+
+```bash
+pip install datasets openai sentence-transformers transformers accelerate tqdm scikit-learn
+```
+
+### Step 2: Set OpenAI API Key
+
+```bash
+export OPENAI_API_KEY=sk-...
+```
+
+### Step 3: Run Finetuning
+
+```bash
+python scripts/finetune_local.py --batch-size 8
+```
+
+This will:
+- Load the LLMail-Inject dataset
+- Clean samples using GPT-4o-mini (~$3-5 total)
+- Finetune MPNet with CosineSimilarityLoss
+- Calibrate threshold using GMM
+- Save model to `./ragshield-embeddings-finetuned`
+
+### Step 4: Use Your Model
+
+```python
+shield = RagShield(config={
+    "embeddings": {
+        "model": "./ragshield-embeddings-finetuned",
+    },
+})
+```
+
+See [docs/FINETUNING.md](docs/FINETUNING.md) for detailed instructions.
+
+## Understanding the Threshold
+
+The `zedd.threshold` is the decision boundary for detecting prompt injections.
+
+**How ZEDD works:**
+1. Compute drift: `drift = 1 - cosine_similarity(embedding_original, embedding_cleaned)`
+2. If `drift > threshold` → text is suspicious
+
+**Example calibration results:**
+
+| Type | Average Drift |
+|------|---------------|
+| Clean text | 0.0015 |
+| Injected text | 0.9144 |
+| **Threshold** | **0.0083** |
+
+**Configuration:**
+
+```yaml
+zedd:
+  threshold: null    # Auto-load from model's calibration.json (recommended)
+  # threshold: 0.01  # Higher = fewer false positives, might miss attacks
+  # threshold: 0.005 # Lower = catch more attacks, more false positives
 ```
 
 ## CLI Usage
@@ -160,6 +255,26 @@ ragshield config validate ragshield.yaml
 
 RagShield can be configured via code, YAML files, or environment variables.
 
+### Full Configuration Example
+
+```yaml
+# ragshield.yaml
+
+embeddings:
+  provider: local  # or "openai"
+  model: ./ragshield-embeddings-finetuned  # or HuggingFace model ID
+
+cleaning:
+  method: llm              # "heuristic" (free) or "llm" (better accuracy)
+  llm_model: gpt-4o-mini   # When method: llm
+
+zedd:
+  threshold: null  # null = auto-load from calibration.json
+
+behavior:
+  on_detect: flag  # "block", "warn", "flag", "filter"
+```
+
 ### Code Configuration
 
 ```python
@@ -167,79 +282,58 @@ from ragshield import RagShield
 
 shield = RagShield(config={
     "embeddings": {
-        "model": "all-MiniLM-L6-v2",  # or "text-embedding-3-small" for OpenAI
-        "provider": "local",           # or "openai"
+        "model": "./ragshield-embeddings-finetuned",
+        "provider": "local",
+    },
+    "cleaning": {
+        "method": "llm",
+        "llm_model": "gpt-4o-mini",
     },
     "zedd": {
-        "threshold": 0.20,  # Optional: override auto-calibrated threshold
+        "threshold": None,  # Auto-load calibrated threshold
     },
     "behavior": {
-        "on_detect": "flag",  # "block", "filter", "flag", "warn"
+        "on_detect": "flag",
     },
 })
 ```
 
-### YAML Configuration
-
-Create `ragshield.yaml`:
-
-```yaml
-embeddings:
-  model: all-MiniLM-L6-v2
-  provider: local
-
-zedd:
-  threshold: null  # Auto-calibrate
-
-cleaning:
-  method: heuristic  # or "llm"
-
-behavior:
-  on_detect: warn
-  log_level: INFO
-```
-
-Then load it:
-
-```python
-shield = RagShield(config="ragshield.yaml")
-```
-
 ### Environment Variables
 
-```bash
-export RAGSHIELD_EMBEDDINGS__MODEL=text-embedding-3-small
-export RAGSHIELD_EMBEDDINGS__PROVIDER=openai
-export OPENAI_API_KEY=sk-...
-```
-
-## First-Time Setup
-
-### 1. Install Dependencies
+Copy `.env.example` to `.env` and fill in your values:
 
 ```bash
-pip install ragshield[cli]
+cp .env.example .env
+# Edit .env with your API key
 ```
 
-### 2. (Optional) Pre-calibrate Thresholds
+RagShield automatically loads variables from `.env`. See `.env.example` for all options with descriptions.
 
-For faster startup, pre-calibrate thresholds for your embedding model:
-
+Key variables:
 ```bash
-# Uses built-in sample data
-ragshield calibrate --model all-MiniLM-L6-v2
-
-# Or with your own clean documents
-ragshield calibrate --model all-MiniLM-L6-v2 --corpus ./my_docs/
+OPENAI_API_KEY=sk-...                                    # Required for LLM cleaning
+RAGSHIELD_EMBEDDINGS__MODEL=./ragshield-embeddings-finetuned
+RAGSHIELD_CLEANING__METHOD=llm
+RAGSHIELD_CLEANING__LLM_MODEL=gpt-4o-mini
 ```
 
-Calibrated thresholds are cached in `~/.ragshield/thresholds/`.
+## Detection Modes (on_detect)
 
-### 3. Run the Demo
+| Mode | Behavior |
+|------|----------|
+| `block` | Raise `PromptInjectionDetected` exception |
+| `filter` | Remove suspicious documents from output |
+| `flag` | Add `_ragshield` metadata to documents |
+| `warn` | Log warning but pass through unchanged |
 
-```bash
-python examples/simple_rag.py --verbose
-```
+## Cleaning Methods
+
+| Method | Accuracy | Cost | Speed |
+|--------|----------|------|-------|
+| `heuristic` | ~70% | Free | Fast |
+| `llm` | ~90% | ~$0.0003/doc | Medium |
+
+**Recommendation:** Use `llm` with `gpt-4o-mini` for best accuracy at minimal cost.
 
 ## API Reference
 
@@ -268,7 +362,7 @@ Protect functions from prompt injections.
 from ragshield import shield
 
 @shield(
-    on_detect="block",        # "block", "warn", or "flag"
+    on_detect="block",        # "block", "warn", "flag", "filter"
     confidence_threshold=0.5, # Minimum confidence to trigger
     scan_args=["documents"],  # Specific args to scan (None = all)
 )
@@ -312,15 +406,6 @@ chain = retriever | runnable | prompt | llm
 safe_docs = runnable.invoke(documents)
 ```
 
-## Detection Modes
-
-| Mode | Behavior |
-|------|----------|
-| `block` | Raise `PromptInjectionDetected` exception |
-| `filter` | Remove suspicious documents from output |
-| `flag` | Add `_ragshield` metadata to documents |
-| `warn` | Log warning but pass through unchanged |
-
 ## Supported Embedding Models
 
 ### Local (sentence-transformers)
@@ -329,6 +414,7 @@ safe_docs = runnable.invoke(documents)
 - `all-mpnet-base-v2` (more accurate)
 - `multi-qa-mpnet-base-dot-v1`
 - Any sentence-transformers model
+- **Your finetuned model** (recommended for best accuracy)
 
 ### OpenAI
 
@@ -346,25 +432,15 @@ safe_docs = runnable.invoke(documents)
        result = shield.scan(doc)  # Less efficient
    ```
 
-2. **Pre-calibrate thresholds** to avoid first-run latency:
+2. **Finetune your model** for best accuracy:
    ```bash
-   ragshield calibrate --model your-model
+   python scripts/finetune_local.py
    ```
 
-3. **Use smaller models** for faster inference:
+3. **Use LLM cleaning** for better detection:
    ```python
-   shield = RagShield(config={"embeddings": {"model": "all-MiniLM-L6-v2"}})
+   shield = RagShield(config={"cleaning": {"method": "llm"}})
    ```
-
-## How Thresholds Work
-
-RagShield uses calibrated thresholds to determine what constitutes "suspicious" drift:
-
-1. **Pre-calibrated**: Common models have built-in thresholds
-2. **User-calibrated**: Run `ragshield calibrate` for your model
-3. **Auto-calibrated**: Unknown models are calibrated on first use
-
-The calibration uses a Gaussian Mixture Model (GMM) to find the optimal decision boundary between clean and injected content, with a false-positive cap of 3%.
 
 ## Exceptions
 

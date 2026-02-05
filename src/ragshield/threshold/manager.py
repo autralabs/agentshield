@@ -78,6 +78,7 @@ class ThresholdManager:
         embedding_provider: Optional[EmbeddingProvider] = None,
         text_cleaner: Optional[TextCleaner] = None,
         auto_calibrate: bool = True,
+        model_path: Optional[str] = None,
     ) -> float:
         """
         Get threshold for a model.
@@ -87,6 +88,7 @@ class ThresholdManager:
             embedding_provider: Provider for auto-calibration (if needed)
             text_cleaner: Cleaner for auto-calibration (if needed)
             auto_calibrate: Whether to auto-calibrate if no threshold found
+            model_path: Local path to finetuned model (for loading calibration.json)
 
         Returns:
             Threshold value
@@ -102,12 +104,17 @@ class ThresholdManager:
         if model_name in self._custom_thresholds:
             return self._custom_thresholds[model_name]
 
-        # 3. Check registry
+        # 3. Check for calibration.json in finetuned model directory
+        finetuned_threshold = self._load_finetuned_calibration(model_name, model_path)
+        if finetuned_threshold is not None:
+            return finetuned_threshold
+
+        # 4. Check registry
         registry_threshold = ThresholdRegistry.get(model_name)
         if registry_threshold is not None:
             return registry_threshold
 
-        # 4. Auto-calibrate
+        # 5. Auto-calibrate
         if auto_calibrate:
             if embedding_provider is None or text_cleaner is None:
                 logger.warning(
@@ -124,6 +131,70 @@ class ThresholdManager:
             f"No threshold found for model '{model_name}'. "
             f"Run calibration with: ragshield calibrate --model {model_name}"
         )
+
+    def _load_finetuned_calibration(
+        self,
+        model_name: str,
+        model_path: Optional[str] = None,
+    ) -> Optional[float]:
+        """
+        Load threshold from a finetuned model's calibration.json.
+
+        The calibration.json is generated during finetuning and contains
+        the GMM-calibrated threshold specific to that model.
+
+        Args:
+            model_name: HuggingFace Hub model ID or local path
+            model_path: Explicit local path (overrides model_name)
+
+        Returns:
+            Threshold value or None if not found
+        """
+        paths_to_check = []
+
+        # Check explicit model_path first
+        if model_path:
+            paths_to_check.append(Path(model_path))
+
+        # Check if model_name is a local path
+        if model_name and "/" in model_name:
+            # Could be HuggingFace Hub ID, check local first
+            local_path = Path(model_name)
+            if local_path.exists():
+                paths_to_check.append(local_path)
+
+            # Check HuggingFace cache
+            hf_cache = Path.home() / ".cache" / "huggingface" / "hub"
+            # HF cache uses -- as separator
+            safe_name = model_name.replace("/", "--")
+            hf_model_path = hf_cache / f"models--{safe_name}"
+            if hf_model_path.exists():
+                # Find the snapshot directory
+                snapshots = hf_model_path / "snapshots"
+                if snapshots.exists():
+                    # Get most recent snapshot
+                    snapshot_dirs = list(snapshots.iterdir())
+                    if snapshot_dirs:
+                        paths_to_check.append(max(snapshot_dirs, key=lambda p: p.stat().st_mtime))
+
+        # Check each path for calibration.json
+        for path in paths_to_check:
+            calibration_file = path / "calibration.json"
+            if calibration_file.exists():
+                try:
+                    with open(calibration_file) as f:
+                        data = json.load(f)
+                    threshold = data.get("threshold")
+                    if threshold is not None:
+                        logger.info(
+                            f"Loaded calibrated threshold {threshold:.4f} "
+                            f"from {calibration_file}"
+                        )
+                        return float(threshold)
+                except Exception as e:
+                    logger.warning(f"Failed to load calibration from {calibration_file}: {e}")
+
+        return None
 
     def _auto_calibrate(
         self,

@@ -21,6 +21,10 @@ LangChain integration:
     >>> chain = retriever | ShieldRunnable() | prompt | llm
 """
 
+# Load environment variables from .env file
+from dotenv import load_dotenv
+load_dotenv()
+
 from ragshield.core.config import ShieldConfig
 from ragshield.core.results import ScanResult, DetectionSignal, ScanDetails
 from ragshield.core.exceptions import (

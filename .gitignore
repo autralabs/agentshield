@@ -5,7 +5,8 @@ __pycache__/
 
 .claude/
 ARCHITECTURE.md
-
+CLAUDE.md
+.DS_Store
 # C extensions
 *.so
 
@@ -208,3 +209,26 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# RagShield specific
+# Model cache and outputs
+*.pt
+*.bin
+*.safetensors
+ragshield-cleaner-lora/
+ragshield-cleaner-lora-merged/
+models/
+checkpoints/
+
+# HuggingFace cache
+.cache/huggingface/
+
+# Training outputs
+wandb/
+outputs/
+runs/
+
+# Never commit credentials
+.env.local
+credentials.json
+secrets.yaml

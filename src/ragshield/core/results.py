@@ -45,12 +45,14 @@ class ScanDetails:
         risk_factors: List of reasons why the content was flagged
         drift_score: Raw drift value from ZEDD (if applicable)
         threshold: Threshold used for detection
+        cleaning_method: Method used for text cleaning
     """
 
     summary: str
     risk_factors: List[str] = field(default_factory=list)
     drift_score: Optional[float] = None
     threshold: Optional[float] = None
+    cleaning_method: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize to dictionary."""
@@ -59,6 +61,7 @@ class ScanDetails:
             "risk_factors": self.risk_factors,
             "drift_score": round(self.drift_score, 6) if self.drift_score is not None else None,
             "threshold": round(self.threshold, 6) if self.threshold is not None else None,
+            "cleaning_method": self.cleaning_method,
         }
 
 

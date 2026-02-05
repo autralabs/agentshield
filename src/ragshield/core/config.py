@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Dict, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 
 import yaml
 from pydantic import BaseModel, Field
@@ -14,11 +14,76 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class EmbeddingConfig(BaseModel):
     """Configuration for embedding generation."""
 
-    provider: Literal["local", "openai"] = "local"
+    provider: Literal["local", "openai", "mlx"] = "local"
     model: str = "all-MiniLM-L6-v2"
 
     # OpenAI-specific settings
     openai_model: str = "text-embedding-3-small"
+
+    # MLX-specific settings (Apple Silicon)
+    mlx_cache_dir: Optional[str] = None  # Cache for converted MLX models
+    mlx_convert_from_hf: bool = True  # Auto-convert from HuggingFace
+
+
+class FinetunedCleanerConfig(BaseModel):
+    """Configuration for finetuned cleaner."""
+
+    # Model source (one of these is required when using finetuned)
+    model_id: Optional[str] = None  # HuggingFace Hub ID
+    model_path: Optional[str] = None  # Local path
+
+    # LoRA settings
+    base_model: str = "microsoft/phi-2"
+    use_lora: bool = True
+
+    # Inference settings
+    device: str = "auto"  # "auto", "cuda", "cpu", "mps"
+    load_in_4bit: bool = True
+    load_in_8bit: bool = False
+    max_new_tokens: int = 256
+    temperature: float = 0.1
+    torch_dtype: Optional[str] = None  # "float16", "bfloat16", "float32"
+
+
+class HybridCleanerConfig(BaseModel):
+    """Configuration for hybrid cleaner."""
+
+    # Methods to combine (in order)
+    methods: List[str] = Field(
+        default_factory=lambda: ["heuristic", "finetuned"],
+        description="Cleaning methods to combine: 'heuristic', 'finetuned', 'llm'"
+    )
+
+    # Combination mode
+    mode: Literal[
+        "sequential",
+        "parallel_vote",
+        "fallback",
+        "best_drift",
+        "least_drift"
+    ] = "sequential"
+
+    # Voting settings (for parallel_vote mode)
+    vote_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
+
+    # Optional weights for each method
+    weights: Optional[Dict[str, float]] = None
+
+
+class CleaningConfig(BaseModel):
+    """Configuration for text cleaning."""
+
+    # Primary cleaning method
+    method: Literal["heuristic", "llm", "finetuned", "hybrid"] = "heuristic"
+
+    # LLM cleaner settings (OpenAI API)
+    llm_model: str = "gpt-3.5-turbo"
+
+    # Finetuned cleaner settings
+    finetuned: FinetunedCleanerConfig = Field(default_factory=FinetunedCleanerConfig)
+
+    # Hybrid cleaner settings
+    hybrid: HybridCleanerConfig = Field(default_factory=HybridCleanerConfig)
 
 
 class ZEDDConfig(BaseModel):
@@ -27,10 +92,11 @@ class ZEDDConfig(BaseModel):
     # Threshold for drift detection (None = auto-calibrate)
     threshold: Optional[float] = None
 
-    # Text cleaning settings
-    cleaning_method: Literal["heuristic", "llm"] = "heuristic"
+    # DEPRECATED: Use cleaning.method instead
+    # Kept for backward compatibility
+    cleaning_method: Literal["heuristic", "llm", "finetuned", "hybrid"] = "heuristic"
 
-    # LLM cleaning settings (only used if cleaning_method="llm")
+    # DEPRECATED: Use cleaning.llm_model instead
     llm_model: str = "gpt-3.5-turbo"
 
 
@@ -38,7 +104,7 @@ class BehaviorConfig(BaseModel):
     """Configuration for detection behavior."""
 
     # Action to take when injection is detected
-    on_detect: Literal["block", "warn", "flag"] = "flag"
+    on_detect: Literal["block", "warn", "flag", "filter"] = "flag"
 
     # Minimum confidence to trigger action
     confidence_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
@@ -74,13 +140,28 @@ class ShieldConfig(BaseSettings):
           provider: local
           model: all-MiniLM-L6-v2
 
+        cleaning:
+          method: hybrid
+          hybrid:
+            methods:
+              - heuristic
+              - finetuned
+            mode: sequential
+          finetuned:
+            model_id: ragshield/cleaner-phi2-lora
+            load_in_4bit: true
+
         zedd:
           threshold: null  # auto-calibrate
-          cleaning_method: heuristic
 
         behavior:
           on_detect: flag
           confidence_threshold: 0.5
+
+    Environment variables:
+        RAGSHIELD_CLEANING__METHOD=hybrid
+        RAGSHIELD_CLEANING__FINETUNED__MODEL_ID=ragshield/cleaner-phi2-lora
+        RAGSHIELD_ZEDD__THRESHOLD=0.2
     """
 
     model_config = SettingsConfigDict(
@@ -91,10 +172,21 @@ class ShieldConfig(BaseSettings):
 
     # Sub-configurations
     embeddings: EmbeddingConfig = Field(default_factory=EmbeddingConfig)
+    cleaning: CleaningConfig = Field(default_factory=CleaningConfig)
     zedd: ZEDDConfig = Field(default_factory=ZEDDConfig)
     behavior: BehaviorConfig = Field(default_factory=BehaviorConfig)
     performance: PerformanceConfig = Field(default_factory=PerformanceConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
+
+    def model_post_init(self, __context: Any) -> None:
+        """Handle backward compatibility after initialization."""
+        # Sync cleaning.method with zedd.cleaning_method for backward compat
+        # If zedd.cleaning_method was explicitly set (not default), use it
+        if self.zedd.cleaning_method != "heuristic" and self.cleaning.method == "heuristic":
+            self.cleaning.method = self.zedd.cleaning_method
+        # Always keep them in sync
+        self.zedd.cleaning_method = self.cleaning.method
+        self.zedd.llm_model = self.cleaning.llm_model
 
     @classmethod
     def from_yaml(cls, path: Union[str, Path]) -> ShieldConfig:
