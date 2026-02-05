@@ -1,6 +1,6 @@
-# Finetuning Embedding Models for RagShield (ZEDD Paper Approach)
+# Finetuning Embedding Models for AgentShield (ZEDD Paper Approach)
 
-This guide explains how to finetune embedding models following the ZEDD paper (arXiv:2601.12359v1) to improve RagShield's detection accuracy.
+This guide explains how to finetune embedding models following the ZEDD paper (arXiv:2601.12359v1) to improve AgentShield's detection accuracy.
 
 ## Overview
 
@@ -46,12 +46,12 @@ The script will:
 ### Step 4: Use Your Finetuned Model
 
 ```python
-from ragshield import RagShield
+from agentshield import AgentShield
 
-shield = RagShield(config={
+shield = AgentShield(config={
     "embeddings": {
         "provider": "local",
-        "model": "./ragshield-embeddings-finetuned",
+        "model": "./agentshield-embeddings-finetuned",
     },
     "cleaning": {
         "method": "llm",
@@ -82,7 +82,7 @@ python scripts/finetune_local.py \
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--max-samples` | 5000 | Maximum samples to process |
-| `--output-dir` | `./ragshield-embeddings-finetuned` | Where to save the model |
+| `--output-dir` | `./agentshield-embeddings-finetuned` | Where to save the model |
 | `--cache-dir` | `./cache` | Cache directory for resuming |
 | `--epochs` | 3 | Number of training epochs |
 | `--batch-size` | 16 | Training batch size |
@@ -128,11 +128,11 @@ The paper uses a 2-component GMM to find the optimal threshold:
 ### YAML Configuration
 
 ```yaml
-# ragshield.yaml
+# agentshield.yaml
 
 embeddings:
   provider: local
-  model: ./ragshield-embeddings-finetuned
+  model: ./agentshield-embeddings-finetuned
 
 cleaning:
   method: llm
@@ -148,9 +148,9 @@ behavior:
 ### Environment Variables
 
 ```bash
-export RAGSHIELD_EMBEDDINGS__MODEL=./ragshield-embeddings-finetuned
-export RAGSHIELD_CLEANING__METHOD=llm
-export RAGSHIELD_CLEANING__LLM_MODEL=gpt-4o-mini
+export AGENTSHIELD_EMBEDDINGS__MODEL=./agentshield-embeddings-finetuned
+export AGENTSHIELD_CLEANING__METHOD=llm
+export AGENTSHIELD_CLEANING__LLM_MODEL=gpt-4o-mini
 ```
 
 ## Training Details
@@ -225,12 +225,12 @@ If the script is interrupted, it will resume from where it left off.
 ### Using Finetuned Embeddings
 
 ```python
-from ragshield import RagShield
+from agentshield import AgentShield
 
 # Auto-loads threshold from model's calibration.json
-shield = RagShield(config={
+shield = AgentShield(config={
     "embeddings": {
-        "model": "./ragshield-embeddings-finetuned",
+        "model": "./agentshield-embeddings-finetuned",
     },
 })
 
@@ -243,9 +243,9 @@ print(f"Confidence: {result.confidence:.2%}")
 ### Manual Threshold Override
 
 ```python
-shield = RagShield(config={
+shield = AgentShield(config={
     "embeddings": {
-        "model": "./ragshield-embeddings-finetuned",
+        "model": "./agentshield-embeddings-finetuned",
     },
     "zedd": {
         "threshold": 0.25,  # Override calibrated threshold

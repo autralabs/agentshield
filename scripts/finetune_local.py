@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RagShield: Finetune Embedding Models Locally (Mac Mini)
+AgentShield: Finetune Embedding Models Locally (Mac Mini)
 
 Following ZEDD paper (arXiv:2601.12359v1):
 - Embedding model: all-mpnet-base-v2
@@ -69,7 +69,7 @@ class Config:
     test_split: float = 0.1
 
     # Paths
-    output_dir: str = "./ragshield-embeddings-finetuned"
+    output_dir: str = "./agentshield-embeddings-finetuned"
     cache_dir: str = "./cache"
 
     seed: int = 42
@@ -479,7 +479,7 @@ def evaluate(model, test_dataset, threshold: float):
 def main():
     parser = argparse.ArgumentParser(description="Finetune embeddings locally")
     parser.add_argument("--max-samples", type=int, default=5000, help="Max samples to process")
-    parser.add_argument("--output-dir", type=str, default="./ragshield-embeddings-finetuned")
+    parser.add_argument("--output-dir", type=str, default="./agentshield-embeddings-finetuned")
     parser.add_argument("--cache-dir", type=str, default="./cache")
     parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--batch-size", type=int, default=16)
@@ -505,7 +505,7 @@ def main():
     setup_seeds(config.seed)
 
     print("=" * 60)
-    print("RagShield: MPNet Embedding Finetuning (ZEDD Paper)")
+    print("AgentShield: MPNet Embedding Finetuning (ZEDD Paper)")
     print("=" * 60)
     print(f"Device: {get_device()}")
     print(f"Model: {config.embedding_model}")
@@ -541,8 +541,8 @@ def main():
         json.dump({'calibration': calibration, 'results': results}, f, indent=2)
 
     print(f"\nDone! Model saved to: {config.output_dir}")
-    print(f"Use with RagShield:")
-    print(f'  shield = RagShield(config={{"embeddings": {{"model": "{config.output_dir}"}}}})')
+    print(f"Use with AgentShield:")
+    print(f'  shield = AgentShield(config={{"embeddings": {{"model": "{config.output_dir}"}}}})')
 
 
 if __name__ == "__main__":

@@ -1,1 +1,1 @@
-"""Tests for RagShield."""
+"""Tests for AgentShield."""

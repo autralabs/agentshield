@@ -210,13 +210,13 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-# RagShield specific
+# AgentShield specific
 # Model cache and outputs
 *.pt
 *.bin
 *.safetensors
-ragshield-cleaner-lora/
-ragshield-cleaner-lora-merged/
+agentshield-cleaner-lora/
+agentshield-cleaner-lora-merged/
 models/
 checkpoints/
 

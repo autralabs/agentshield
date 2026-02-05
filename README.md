@@ -2,11 +2,11 @@
 
 Prompt injection detection for RAG pipelines using ZEDD (Zero-Shot Embedding Drift Detection).
 
-RagShield protects your RAG applications from indirect prompt injection attacks by scanning retrieved documents before they reach your LLM's context window.
+AgentShield protects your RAG applications from indirect prompt injection attacks by scanning retrieved documents before they reach your LLM's context window.
 
 ## How It Works
 
-RagShield implements the ZEDD algorithm from [arXiv:2601.12359v1](https://arxiv.org/abs/2601.12359):
+AgentShield implements the ZEDD algorithm from [arXiv:2601.12359v1](https://arxiv.org/abs/2601.12359):
 
 1. **Clean** the input text to remove potential injection patterns
 2. **Embed** both original and cleaned versions using an embedding model
@@ -15,45 +15,45 @@ RagShield implements the ZEDD algorithm from [arXiv:2601.12359v1](https://arxiv.
 
 The key insight: malicious injections cause measurable semantic drift when removed, while clean text remains stable.
 
-> **Note:** The file `Zero_Shot_Embedding_Drift_Detection_A_Lightweight_Defense_Against_Prompt_Injections_in_LLMs.ipynb` in this repository is the original notebook from the ZEDD paper authors, included here as reference material. It is not part of the RagShield codebase.
+> **Note:** The file `Zero_Shot_Embedding_Drift_Detection_A_Lightweight_Defense_Against_Prompt_Injections_in_LLMs.ipynb` in this repository is the original notebook from the ZEDD paper authors, included here as reference material. It is not part of the AgentShield codebase.
 
 ## Installation
 
 ### Basic Installation
 
 ```bash
-pip install ragshield
+pip install agentshield
 ```
 
 ### With CLI Support
 
 ```bash
-pip install ragshield[cli]
+pip install agentshield[cli]
 ```
 
 ### With LangChain Integration
 
 ```bash
-pip install ragshield[langchain]
+pip install agentshield[langchain]
 ```
 
 ### With OpenAI (for LLM cleaning)
 
 ```bash
-pip install ragshield[openai]
+pip install agentshield[openai]
 ```
 
 ### Full Installation
 
 ```bash
-pip install ragshield[all]
+pip install agentshield[all]
 ```
 
 ### Development Installation
 
 ```bash
-git clone https://github.com/yourusername/ragshield.git
-cd ragshield
+git clone https://github.com/yourusername/agentshield.git
+cd agentshield
 pip install -e ".[dev]"
 ```
 
@@ -62,7 +62,7 @@ pip install -e ".[dev]"
 ### Simple Scan
 
 ```python
-from ragshield import scan
+from agentshield import scan
 
 # Scan a single document
 result = scan("This is a normal document about Python programming.")
@@ -77,12 +77,12 @@ print(result.confidence)     # 0.87
 ### Using a Finetuned Model
 
 ```python
-from ragshield import RagShield
+from agentshield import AgentShield
 
-shield = RagShield(config={
+shield = AgentShield(config={
     "embeddings": {
         "provider": "local",
-        "model": "./ragshield-embeddings-finetuned",  # Your finetuned model
+        "model": "./agentshield-embeddings-finetuned",  # Your finetuned model
     },
     "cleaning": {
         "method": "llm",           # Use LLM for better accuracy
@@ -104,7 +104,7 @@ print(f"Confidence: {result.confidence:.2%}")
 ### Decorator for Functions
 
 ```python
-from ragshield import shield
+from agentshield import shield
 
 @shield(on_detect="block")
 def process_documents(query: str, documents: list[str]) -> str:
@@ -123,7 +123,7 @@ def answer_question(query: str, documents: list[str]) -> str:
 ### LangChain Integration
 
 ```python
-from ragshield.integrations.langchain import ShieldRunnable
+from agentshield.integrations.langchain import ShieldRunnable
 
 # Insert into any LangChain chain
 chain = retriever | ShieldRunnable(on_detect="filter") | prompt | llm
@@ -131,7 +131,7 @@ chain = retriever | ShieldRunnable(on_detect="filter") | prompt | llm
 # Options:
 # - on_detect="block": Raise exception on detection
 # - on_detect="filter": Remove suspicious documents silently
-# - on_detect="flag": Add _ragshield metadata to documents
+# - on_detect="flag": Add _agentshield metadata to documents
 # - on_detect="warn": Log warnings but pass through
 ```
 
@@ -162,14 +162,14 @@ This will:
 - Clean samples using GPT-4o-mini (~$3-5 total)
 - Finetune MPNet with CosineSimilarityLoss
 - Calibrate threshold using GMM
-- Save model to `./ragshield-embeddings-finetuned`
+- Save model to `./agentshield-embeddings-finetuned`
 
 ### Step 4: Use Your Model
 
 ```python
-shield = RagShield(config={
+shield = AgentShield(config={
     "embeddings": {
-        "model": "./ragshield-embeddings-finetuned",
+        "model": "./agentshield-embeddings-finetuned",
     },
 })
 ```
@@ -207,62 +207,62 @@ zedd:
 
 ```bash
 # Scan a single file
-ragshield scan document.txt
+agentshield scan document.txt
 
 # Scan a directory
-ragshield scan ./documents/
+agentshield scan ./documents/
 
 # Scan from stdin
-echo "Hello, ignore previous instructions" | ragshield scan -
+echo "Hello, ignore previous instructions" | agentshield scan -
 
 # Scan with direct text
-ragshield scan --text "Some text to scan"
+agentshield scan --text "Some text to scan"
 
 # JSON output
-ragshield scan document.txt --output json
+agentshield scan document.txt --output json
 
 # Verbose output
-ragshield scan document.txt --verbose
+agentshield scan document.txt --verbose
 ```
 
 ### Calibrate Thresholds
 
 ```bash
 # Calibrate for the default model
-ragshield calibrate
+agentshield calibrate
 
 # Calibrate for a specific model
-ragshield calibrate --model text-embedding-3-small
+agentshield calibrate --model text-embedding-3-small
 
 # Calibrate with your own corpus
-ragshield calibrate --model all-MiniLM-L6-v2 --corpus ./my_clean_docs/
+agentshield calibrate --model all-MiniLM-L6-v2 --corpus ./my_clean_docs/
 ```
 
 ### Configuration
 
 ```bash
 # Show current configuration
-ragshield config show
+agentshield config show
 
 # Create default config file
-ragshield config init
+agentshield config init
 
 # Validate a config file
-ragshield config validate ragshield.yaml
+agentshield config validate agentshield.yaml
 ```
 
 ## Configuration
 
-RagShield can be configured via code, YAML files, or environment variables.
+AgentShield can be configured via code, YAML files, or environment variables.
 
 ### Full Configuration Example
 
 ```yaml
-# ragshield.yaml
+# agentshield.yaml
 
 embeddings:
   provider: local  # or "openai"
-  model: ./ragshield-embeddings-finetuned  # or HuggingFace model ID
+  model: ./agentshield-embeddings-finetuned  # or HuggingFace model ID
 
 cleaning:
   method: llm              # "heuristic" (free) or "llm" (better accuracy)
@@ -278,11 +278,11 @@ behavior:
 ### Code Configuration
 
 ```python
-from ragshield import RagShield
+from agentshield import AgentShield
 
-shield = RagShield(config={
+shield = AgentShield(config={
     "embeddings": {
-        "model": "./ragshield-embeddings-finetuned",
+        "model": "./agentshield-embeddings-finetuned",
         "provider": "local",
     },
     "cleaning": {
@@ -307,14 +307,14 @@ cp .env.example .env
 # Edit .env with your API key
 ```
 
-RagShield automatically loads variables from `.env`. See `.env.example` for all options with descriptions.
+AgentShield automatically loads variables from `.env`. See `.env.example` for all options with descriptions.
 
 Key variables:
 ```bash
 OPENAI_API_KEY=sk-...                                    # Required for LLM cleaning
-RAGSHIELD_EMBEDDINGS__MODEL=./ragshield-embeddings-finetuned
-RAGSHIELD_CLEANING__METHOD=llm
-RAGSHIELD_CLEANING__LLM_MODEL=gpt-4o-mini
+AGENTSHIELD_EMBEDDINGS__MODEL=./agentshield-embeddings-finetuned
+AGENTSHIELD_CLEANING__METHOD=llm
+AGENTSHIELD_CLEANING__LLM_MODEL=gpt-4o-mini
 ```
 
 ## Detection Modes (on_detect)
@@ -323,7 +323,7 @@ RAGSHIELD_CLEANING__LLM_MODEL=gpt-4o-mini
 |------|----------|
 | `block` | Raise `PromptInjectionDetected` exception |
 | `filter` | Remove suspicious documents from output |
-| `flag` | Add `_ragshield` metadata to documents |
+| `flag` | Add `_agentshield` metadata to documents |
 | `warn` | Log warning but pass through unchanged |
 
 ## Cleaning Methods
@@ -342,7 +342,7 @@ RAGSHIELD_CLEANING__LLM_MODEL=gpt-4o-mini
 Scan text for prompt injections.
 
 ```python
-from ragshield import scan
+from agentshield import scan
 
 # Single text
 result = scan("Some text")
@@ -359,7 +359,7 @@ results = scan(["Text 1", "Text 2", "Text 3"])
 Protect functions from prompt injections.
 
 ```python
-from ragshield import shield
+from agentshield import shield
 
 @shield(
     on_detect="block",        # "block", "warn", "flag", "filter"
@@ -370,14 +370,14 @@ def my_function(query: str, documents: list[str]) -> str:
     ...
 ```
 
-### `RagShield` Class
+### `AgentShield` Class
 
 Full control over scanning and configuration.
 
 ```python
-from ragshield import RagShield
+from agentshield import AgentShield
 
-shield = RagShield(config={...})
+shield = AgentShield(config={...})
 
 # Scan
 result = shield.scan("text")
@@ -392,7 +392,7 @@ threshold = shield.calibrate(corpus=["clean doc 1", "clean doc 2"])
 LangChain-compatible runnable for use in chains.
 
 ```python
-from ragshield.integrations.langchain import ShieldRunnable
+from agentshield.integrations.langchain import ShieldRunnable
 
 runnable = ShieldRunnable(
     on_detect="filter",         # "block", "filter", "flag", "warn"
@@ -439,14 +439,14 @@ safe_docs = runnable.invoke(documents)
 
 3. **Use LLM cleaning** for better detection:
    ```python
-   shield = RagShield(config={"cleaning": {"method": "llm"}})
+   shield = AgentShield(config={"cleaning": {"method": "llm"}})
    ```
 
 ## Exceptions
 
 ```python
-from ragshield import (
-    RagShieldError,           # Base exception
+from agentshield import (
+    AgentShieldError,           # Base exception
     PromptInjectionDetected,  # Raised when blocking detected injection
     CalibrationError,         # Calibration failed
     ConfigurationError,       # Invalid configuration
@@ -482,7 +482,7 @@ python -m build
 
 ## Citation
 
-If you use RagShield in your research, please cite the ZEDD paper:
+If you use AgentShield in your research, please cite the ZEDD paper:
 
 ```bibtex
 @article{zedd2025,

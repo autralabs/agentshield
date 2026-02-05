@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Simple RAG application demonstrating RagShield integration.
+Simple RAG application demonstrating AgentShield integration.
 
 This example shows:
 1. scan() - Direct text scanning
@@ -17,7 +17,7 @@ Or with verbose output:
 
 Requirements:
     - Set OPENAI_API_KEY for LLM cleaning
-    - Finetuned model at ./ragshield-embeddings-finetuned (optional)
+    - Finetuned model at ./agentshield-embeddings-finetuned (optional)
 """
 
 from __future__ import annotations
@@ -184,7 +184,7 @@ Answer:"""
 
 def get_shield_config() -> dict:
     """
-    Get RagShield configuration.
+    Get AgentShield configuration.
 
     Uses finetuned model if available, LLM cleaning if API key is set.
     """
@@ -198,8 +198,8 @@ def get_shield_config() -> dict:
     }
 
     # Use finetuned model if available
-    finetuned_path = "./ragshield-embeddings-finetuned"
-    scripts_path = "./scripts/ragshield-embeddings-finetuned"
+    finetuned_path = "./agentshield-embeddings-finetuned"
+    scripts_path = "./scripts/agentshield-embeddings-finetuned"
 
     if os.path.exists(finetuned_path):
         config["embeddings"]["model"] = finetuned_path
@@ -237,7 +237,7 @@ def demo_scan_function(verbose: bool = False) -> None:
     print("DEMO 1: Using scan() function")
     print("=" * 70)
 
-    from ragshield import scan
+    from agentshield import scan
 
     # Scan individual documents
     print("\nScanning individual documents...\n")
@@ -272,7 +272,7 @@ def demo_all_behaviors(verbose: bool = False) -> None:
     print("DEMO 2: All on_detect Behaviors")
     print("=" * 70)
 
-    from ragshield import shield, PromptInjectionDetected
+    from agentshield import shield, PromptInjectionDetected
 
     retriever = SimpleRetriever(ALL_DOCUMENTS)
     llm = MockLLM()
@@ -324,11 +324,11 @@ def demo_all_behaviors(verbose: bool = False) -> None:
     # --------------------------------------------------------------------------
     print("\n  [3] Testing 'flag' mode...")
 
-    from ragshield import RagShield
+    from agentshield import AgentShield
 
     config = get_shield_config()
     config["behavior"] = {"on_detect": "flag"}
-    shield_instance = RagShield(config=config)
+    shield_instance = AgentShield(config=config)
 
     results = shield_instance.scan([doc.content for doc in docs])
 
@@ -344,7 +344,7 @@ def demo_all_behaviors(verbose: bool = False) -> None:
     # --------------------------------------------------------------------------
     print("\n  [4] Testing 'filter' mode...")
 
-    from ragshield.integrations.langchain import ShieldRunnable
+    from agentshield.integrations.langchain import ShieldRunnable
 
     shield_filter = ShieldRunnable(on_detect="filter")
 
@@ -366,8 +366,8 @@ def demo_langchain_runnable(verbose: bool = False) -> None:
     print("DEMO 3: Using ShieldRunnable (LangChain-style)")
     print("=" * 70)
 
-    from ragshield.integrations.langchain import ShieldRunnable
-    from ragshield import PromptInjectionDetected
+    from agentshield.integrations.langchain import ShieldRunnable
+    from agentshield import PromptInjectionDetected
 
     retriever = SimpleRetriever(ALL_DOCUMENTS)
 
@@ -392,8 +392,8 @@ def demo_langchain_runnable(verbose: bool = False) -> None:
     flagged_docs = shield_flag.invoke(doc_dicts)
 
     for doc in flagged_docs:
-        if "_ragshield" in doc:
-            result = doc["_ragshield"]
+        if "_agentshield" in doc:
+            result = doc["_agentshield"]
             status = "SUSPICIOUS" if result["is_suspicious"] else "clean"
             print(f"    [{doc['id']}] {status} (confidence: {result['confidence']:.2%})")
 
@@ -419,7 +419,7 @@ def demo_finetuned_model(verbose: bool = False) -> None:
     print("DEMO 4: Finetuned Model with LLM Cleaning")
     print("=" * 70)
 
-    from ragshield import RagShield
+    from agentshield import AgentShield
 
     print("\n  Configuration:")
     config = get_shield_config()
@@ -427,7 +427,7 @@ def demo_finetuned_model(verbose: bool = False) -> None:
     # Show config details
     print(f"  Threshold: auto-loaded from calibration.json")
 
-    shield = RagShield(config=config)
+    shield = AgentShield(config=config)
 
     # Test with various inputs
     test_cases = [
@@ -466,15 +466,15 @@ def demo_full_pipeline(verbose: bool = False) -> None:
     print("DEMO 5: End-to-End RAG Pipeline")
     print("=" * 70)
 
-    from ragshield import RagShield
+    from agentshield import AgentShield
 
     # Initialize components
     retriever = SimpleRetriever(ALL_DOCUMENTS)
     llm = MockLLM()
 
-    print("\n  Initializing RagShield...")
+    print("\n  Initializing AgentShield...")
     config = get_shield_config()
-    shield = RagShield(config=config)
+    shield = AgentShield(config=config)
 
     def protected_rag_query(query: str) -> str:
         """
@@ -533,7 +533,7 @@ def demo_full_pipeline(verbose: bool = False) -> None:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="RagShield demo application"
+        description="AgentShield demo application"
     )
     parser.add_argument(
         "-v", "--verbose",
@@ -549,10 +549,10 @@ def main():
     args = parser.parse_args()
 
     print("=" * 70)
-    print("RagShield Demo Application")
+    print("AgentShield Demo Application")
     print("=" * 70)
     print("\nThis demo shows how to protect RAG pipelines from prompt injection")
-    print("attacks using RagShield's ZEDD (Zero-Shot Embedding Drift Detection).")
+    print("attacks using AgentShield's ZEDD (Zero-Shot Embedding Drift Detection).")
 
     # Check for OpenAI API key
     if not os.environ.get("OPENAI_API_KEY"):

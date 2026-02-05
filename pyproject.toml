@@ -3,14 +3,14 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "ragshield"
+name = "agentshield"
 version = "0.1.0"
 description = "Prompt injection detection for RAG pipelines using ZEDD (Zero-Shot Embedding Drift Detection)"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.9"
 authors = [
-    { name = "RagShield Contributors" }
+    { name = "AgentShield Contributors" }
 ]
 keywords = [
     "llm",
@@ -59,7 +59,7 @@ finetuned = [
 ]
 # Full training dependencies (for Google Colab or GPU servers)
 training = [
-    "ragshield[finetuned]",
+    "agentshield[finetuned]",
     "datasets>=2.14.0",
     "trl>=0.7.0",
     "wandb>=0.15.0",
@@ -75,19 +75,19 @@ dev = [
     "ruff>=0.1.0",
     "mypy>=1.0.0",
 ]
-all = ["ragshield[openai,langchain,finetuned,cli,mlx]"]
+all = ["agentshield[openai,langchain,finetuned,cli,mlx]"]
 
 [project.scripts]
-ragshield = "ragshield.cli.main:app"
+agentshield = "agentshield.cli.main:app"
 
 [project.urls]
-Homepage = "https://github.com/ragshield/ragshield"
-Documentation = "https://github.com/ragshield/ragshield#readme"
-Repository = "https://github.com/ragshield/ragshield"
-Issues = "https://github.com/ragshield/ragshield/issues"
+Homepage = "https://github.com/agentshield/agentshield"
+Documentation = "https://github.com/agentshield/agentshield#readme"
+Repository = "https://github.com/agentshield/agentshield"
+Issues = "https://github.com/agentshield/agentshield/issues"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/ragshield"]
+packages = ["src/agentshield"]
 
 [tool.ruff]
 target-version = "py39"
@@ -105,4 +105,4 @@ warn_unused_ignores = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-v --cov=ragshield --cov-report=term-missing"
+addopts = "-v --cov=agentshield --cov-report=term-missing"

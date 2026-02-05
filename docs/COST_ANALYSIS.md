@@ -1,4 +1,4 @@
-# RagShield Cost Analysis
+# AgentShield Cost Analysis
 
 This document breaks down the costs for the ZEDD paper approach vs alternatives.
 
@@ -176,7 +176,7 @@ Using sentence-transformers locally:
 ### 3. Cache Cleaned Results
 ```python
 # In your config
-shield = RagShield(config={
+shield = AgentShield(config={
     "performance": {
         "cache_embeddings": True,
         "cache_cleaned": True,  # Add this
@@ -193,7 +193,7 @@ results = shield.scan(["doc1", "doc2", "doc3", ...])
 ### 5. Pre-filter with Heuristics
 ```python
 # Use hybrid mode: heuristic first, LLM only if needed
-shield = RagShield(config={
+shield = AgentShield(config={
     "cleaning": {
         "method": "hybrid",
         "hybrid": {
@@ -222,7 +222,7 @@ shield = RagShield(config={
 For your use case (production-ready, cost-conscious):
 
 ```yaml
-# ragshield.yaml
+# agentshield.yaml
 cleaning:
   method: llm
   llm_model: gpt-4o-mini  # Cheapest, good quality
