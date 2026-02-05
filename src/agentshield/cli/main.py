@@ -19,7 +19,7 @@ except ImportError:
 
 app = typer.Typer(
     name="agentshield",
-    help="Prompt injection detection for RAG pipelines.",
+    help="Prompt injection detection for Agents.",
     add_completion=False,
 )
 console = Console()

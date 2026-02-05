@@ -1,5 +1,5 @@
 """
-AgentShield - Prompt injection detection for RAG pipelines.
+AgentShield - Prompt injection detection for Agents.
 
 Uses ZEDD (Zero-Shot Embedding Drift Detection) to identify malicious
 content in retrieved documents before they reach the LLM context window.

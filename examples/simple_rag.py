@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Simple RAG application demonstrating AgentShield integration.
+Simple agent application demonstrating AgentShield integration.
 
 This example shows:
 1. scan() - Direct text scanning
@@ -161,7 +161,7 @@ class MockLLM:
 
 
 def build_prompt(query: str, documents: list[Document]) -> str:
-    """Build a RAG prompt from query and retrieved documents."""
+    """Build a prompt from query and retrieved documents."""
     context_parts = []
     for doc in documents:
         context_parts.append(f"[{doc.id}]\n{doc.content}\n---")
@@ -457,13 +457,13 @@ def demo_finetuned_model(verbose: bool = False) -> None:
 
 
 # ==============================================================================
-# Demo 5: End-to-End RAG Pipeline
+# Demo 5: End-to-End Agent Pipeline
 # ==============================================================================
 
 def demo_full_pipeline(verbose: bool = False) -> None:
-    """Demonstrate a complete RAG pipeline with protection."""
+    """Demonstrate a complete agent pipeline with protection."""
     print("\n" + "=" * 70)
-    print("DEMO 5: End-to-End RAG Pipeline")
+    print("DEMO 5: End-to-End Agent Pipeline")
     print("=" * 70)
 
     from agentshield import AgentShield
@@ -476,9 +476,9 @@ def demo_full_pipeline(verbose: bool = False) -> None:
     config = get_shield_config()
     shield = AgentShield(config=config)
 
-    def protected_rag_query(query: str) -> str:
+    def protected_agent_query(query: str) -> str:
         """
-        Complete RAG query with prompt injection protection.
+        Complete agent query with prompt injection protection.
 
         Flow:
         1. Retrieve relevant documents
@@ -519,11 +519,11 @@ def demo_full_pipeline(verbose: bool = False) -> None:
         "What are REST APIs?",
     ]
 
-    print("\n  Running protected RAG queries...\n")
+    print("\n  Running protected agent queries...\n")
 
     for query in queries:
         print(f"  Q: {query}")
-        response = protected_rag_query(query)
+        response = protected_agent_query(query)
         print(f"  A: {response}\n")
 
 
@@ -551,7 +551,7 @@ def main():
     print("=" * 70)
     print("AgentShield Demo Application")
     print("=" * 70)
-    print("\nThis demo shows how to protect RAG pipelines from prompt injection")
+    print("\nThis demo shows how to protect agents from prompt injection")
     print("attacks using AgentShield's ZEDD (Zero-Shot Embedding Drift Detection).")
 
     # Check for OpenAI API key

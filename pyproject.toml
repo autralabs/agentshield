@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "agentshield"
 version = "0.1.0"
-description = "Prompt injection detection for RAG pipelines using ZEDD (Zero-Shot Embedding Drift Detection)"
+description = "Prompt injection detection for Agents using ZEDD (Zero-Shot Embedding Drift Detection)"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.9"
