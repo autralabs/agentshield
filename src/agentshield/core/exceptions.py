@@ -58,3 +58,9 @@ class CleaningError(AgentShieldError):
     """Raised when text cleaning fails."""
 
     pass
+
+
+class SetupError(AgentShieldError):
+    """Raised when model setup or readiness check fails."""
+
+    pass

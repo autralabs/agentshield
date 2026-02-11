@@ -39,7 +39,7 @@ pip install agentshield[langchain]
 pip install agentshield[openai]
 
 # Development
-git clone https://github.com/yourusername/agentshield.git
+git clone https://github.com/autralabs/agentshield.git
 cd agentshield
 pip install -e ".[dev]"
 ```

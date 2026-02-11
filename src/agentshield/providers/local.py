@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import warnings
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
@@ -64,6 +65,17 @@ class LocalEmbeddingProvider:
                 "sentence-transformers is required for local embeddings. "
                 "Install with: pip install sentence-transformers"
             ) from e
+
+        # Warn if model is not cached (will trigger a download)
+        from agentshield.core.setup import is_model_cached
+        if not is_model_cached(self._model_name):
+            warnings.warn(
+                f"Embedding model '{self._model_name}' is not cached and will be "
+                f"downloaded (~80MB). This may cause slow startup in production. "
+                f"Run 'agentshield setup' or call agentshield.setup() during deployment "
+                f"to pre-download the model.",
+                stacklevel=2,
+            )
 
         logger.info(f"Loading embedding model: {self._model_name}")
         self._model = SentenceTransformer(self._model_name, device=self._device)

@@ -238,6 +238,91 @@ def config_cmd(
         raise typer.Exit(1)
 
 
+@app.command("setup")
+def setup_cmd(
+    model: Optional[str] = typer.Option(
+        None,
+        "--model", "-m",
+        help="Specific model to download (overrides config).",
+    ),
+    config: Optional[Path] = typer.Option(
+        None,
+        "--config", "-c",
+        help="Path to configuration YAML file.",
+    ),
+    check: bool = typer.Option(
+        False,
+        "--check",
+        help="Check if model is cached (exit 1 if not). For Docker HEALTHCHECK.",
+    ),
+    output: str = typer.Option(
+        "text",
+        "--output", "-o",
+        help="Output format: text, json",
+    ),
+):
+    """
+    Download and validate the embedding model.
+
+    Run this during deployment to avoid cold-start latency.
+
+    Examples:
+
+        agentshield setup
+
+        agentshield setup --model all-mpnet-base-v2
+
+        agentshield setup --check
+
+        agentshield setup --config agentshield.yaml --output json
+    """
+    from agentshield.core.setup import setup as do_setup, is_model_cached, SetupResult
+
+    # --check mode: lightweight readiness probe
+    if check:
+        from agentshield.core.config import ShieldConfig
+        loaded_config = ShieldConfig.load(config) if config else ShieldConfig()
+        effective_model = model or loaded_config.embeddings.model
+        cached = is_model_cached(effective_model)
+
+        if output == "json":
+            print(json.dumps({"model": effective_model, "cached": cached}))
+        else:
+            if cached:
+                console.print(f"[green]Model '{effective_model}' is cached and ready.[/green]")
+            else:
+                console.print(f"[red]Model '{effective_model}' is NOT cached. Run 'agentshield setup' first.[/red]")
+
+        raise typer.Exit(0 if cached else 1)
+
+    # Full setup: download + validate
+    if output != "json":
+        console.print("[bold]Setting up AgentShield...[/bold]")
+
+    try:
+        result = do_setup(config=config, model_name=model)
+    except Exception as e:
+        if output == "json":
+            print(json.dumps({"success": False, "error": str(e)}))
+        else:
+            console.print(f"[red]Setup failed: {e}[/red]")
+        raise typer.Exit(1)
+
+    if output == "json":
+        print(json.dumps(result.to_dict(), indent=2))
+    else:
+        if result.skipped:
+            console.print(f"[yellow]{result.message}[/yellow]")
+        else:
+            console.print(f"[green]Setup complete![/green]")
+            console.print(f"  Model: {result.model_name}")
+            console.print(f"  Dimensions: {result.dimensions}")
+            if result.model_path:
+                console.print(f"  Path: {result.model_path}")
+            console.print(f"  Download: {result.download_time_ms:.0f}ms")
+            console.print(f"  Validation: {result.validation_time_ms:.0f}ms")
+
+
 @app.command()
 def version():
     """Show AgentShield version."""

@@ -32,8 +32,10 @@ from agentshield.core.exceptions import (
     PromptInjectionDetected,
     CalibrationError,
     ConfigurationError,
+    SetupError,
 )
 from agentshield.core.shield import AgentShield
+from agentshield.core.setup import setup, is_model_cached, SetupResult
 from agentshield.api.scan import scan
 from agentshield.api.decorator import shield
 
@@ -45,6 +47,10 @@ __all__ = [
     # API functions
     "scan",
     "shield",
+    # Setup
+    "setup",
+    "is_model_cached",
+    "SetupResult",
     # Config and results
     "ShieldConfig",
     "ScanResult",
@@ -55,4 +61,5 @@ __all__ = [
     "PromptInjectionDetected",
     "CalibrationError",
     "ConfigurationError",
+    "SetupError",
 ]
