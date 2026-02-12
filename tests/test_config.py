@@ -9,7 +9,7 @@ from unittest.mock import patch
 import pytest
 import yaml
 
-from agentshield.core.config import (
+from pyagentshield.core.config import (
     BehaviorConfig,
     CleaningConfig,
     EmbeddingConfig,

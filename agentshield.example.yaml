@@ -1,5 +1,5 @@
 # AgentShield Configuration Example
-# Copy to agentshield.yaml and modify as needed
+# Copy to pyagentshield.yaml and modify as needed
 # Or set AGENTSHIELD_CONFIG_PATH environment variable
 
 # =============================================================================
@@ -34,7 +34,7 @@ cleaning:
   # Finetuned cleaner settings (when method: finetuned)
   finetuned:
     # HuggingFace Hub model ID
-    model_id: null  # e.g., "agentshield/cleaner-phi2-lora"
+    model_id: null  # e.g., "pyagentshield/cleaner-phi2-lora"
 
     # Or local path (takes precedence over model_id)
     model_path: null  # e.g., "/path/to/model"

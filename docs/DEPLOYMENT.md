@@ -7,17 +7,17 @@ AgentShield uses sentence-transformers embedding models (~80MB) that are downloa
 ### Python Script
 
 ```python
-import agentshield
+import pyagentshield
 
 # Pre-download and validate the default model
-result = agentshield.setup()
+result = pyagentshield.setup()
 print(result.message)  # "Model 'all-MiniLM-L6-v2' ready (384d embeddings)."
 
 # Or with a specific model
-result = agentshield.setup(model_name="all-mpnet-base-v2")
+result = pyagentshield.setup(model_name="all-mpnet-base-v2")
 
 # Or with full config
-result = agentshield.setup(config={
+result = pyagentshield.setup(config={
     "embeddings": {"model": "./agentshield-embeddings-finetuned"},
     "cleaning": {"method": "llm"},
 })
@@ -50,7 +50,7 @@ agentshield setup --output json
 FROM python:3.11-slim AS builder
 
 # Install agentshield
-RUN pip install agentshield[all]
+RUN pip install pyagentshield[all]
 
 # Pre-download the model during build
 RUN agentshield setup --model all-MiniLM-L6-v2
@@ -116,12 +116,12 @@ CMD ["python", "app.py"]
 ```python
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
-import agentshield
+import pyagentshield
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: pre-load the model
-    result = agentshield.setup()
+    result = pyagentshield.setup()
     print(f"AgentShield ready: {result.message}")
     yield
     # Shutdown: nothing to clean up
@@ -130,8 +130,8 @@ app = FastAPI(lifespan=lifespan)
 
 @app.get("/health")
 def health():
-    cached = agentshield.is_model_cached()
-    return {"agentshield": "ready" if cached else "not_ready"}
+    cached = pyagentshield.is_model_cached()
+    return {"pyagentshield": "ready" if cached else "not_ready"}
 ```
 
 ### Django
@@ -144,8 +144,8 @@ class MyAppConfig(AppConfig):
     name = "myapp"
 
     def ready(self):
-        import agentshield
-        result = agentshield.setup()
+        import pyagentshield
+        result = pyagentshield.setup()
         print(f"AgentShield ready: {result.message}")
 ```
 
@@ -153,29 +153,29 @@ class MyAppConfig(AppConfig):
 
 ```python
 from flask import Flask
-import agentshield
+import pyagentshield
 
 app = Flask(__name__)
 
 # Setup during app initialization
 with app.app_context():
-    result = agentshield.setup()
+    result = pyagentshield.setup()
     print(f"AgentShield ready: {result.message}")
 ```
 
 ### Plain Python Script
 
 ```python
-import agentshield
+import pyagentshield
 
 # Check first, setup only if needed
-if not agentshield.is_model_cached():
+if not pyagentshield.is_model_cached():
     print("Downloading model...")
-    result = agentshield.setup()
+    result = pyagentshield.setup()
     print(result.message)
 
 # Now safe to use — no download latency
-result = agentshield.scan("Some text to check")
+result = pyagentshield.scan("Some text to check")
 ```
 
 ## Kubernetes
@@ -191,12 +191,12 @@ spec:
       image: myapp:latest
       livenessProbe:
         exec:
-          command: ["agentshield", "setup", "--check"]
+          command: ["pyagentshield", "setup", "--check"]
         initialDelaySeconds: 5
         periodSeconds: 30
       readinessProbe:
         exec:
-          command: ["agentshield", "setup", "--check"]
+          command: ["pyagentshield", "setup", "--check"]
         initialDelaySeconds: 3
         periodSeconds: 10
 ```
@@ -210,7 +210,7 @@ spec:
   initContainers:
     - name: model-downloader
       image: myapp:latest
-      command: ["agentshield", "setup"]
+      command: ["pyagentshield", "setup"]
       volumeMounts:
         - name: model-cache
           mountPath: /root/.cache/huggingface
@@ -228,13 +228,13 @@ spec:
 ## Readiness Check API
 
 ```python
-import agentshield
+import pyagentshield
 
 # Lightweight — no model loading
-agentshield.is_model_cached()  # True/False
+pyagentshield.is_model_cached()  # True/False
 
 # Full check — downloads + validates
-result = agentshield.setup()
+result = pyagentshield.setup()
 result.success       # bool
 result.model_name    # str
 result.dimensions    # int
@@ -249,7 +249,7 @@ If you skip `agentshield setup`, the model will be downloaded automatically on t
 ```
 UserWarning: Embedding model 'all-MiniLM-L6-v2' is not cached and will be
 downloaded (~80MB). This may cause slow startup in production.
-Run 'agentshield setup' or call agentshield.setup() during deployment
+Run 'agentshield setup' or call pyagentshield.setup() during deployment
 to pre-download the model.
 ```
 

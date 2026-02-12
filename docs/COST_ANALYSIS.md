@@ -222,7 +222,7 @@ shield = AgentShield(config={
 For your use case (production-ready, cost-conscious):
 
 ```yaml
-# agentshield.yaml
+# pyagentshield.yaml
 cleaning:
   method: llm
   llm_model: gpt-4o-mini  # Cheapest, good quality

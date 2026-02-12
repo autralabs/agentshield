@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 from numpy.typing import NDArray
 
-from agentshield.core.config import ShieldConfig
+from pyagentshield.core.config import ShieldConfig
 
 
 class MockEmbeddingProvider:
@@ -101,6 +101,6 @@ def default_config():
 @pytest.fixture
 def tmp_cache_dir(tmp_path):
     """Provide a temporary cache directory."""
-    cache = tmp_path / "agentshield_cache"
+    cache = tmp_path / "pyagentshield_cache"
     cache.mkdir()
     return cache

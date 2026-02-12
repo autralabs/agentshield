@@ -237,7 +237,7 @@ def demo_scan_function(verbose: bool = False) -> None:
     print("DEMO 1: Using scan() function")
     print("=" * 70)
 
-    from agentshield import scan
+    from pyagentshield import scan
 
     # Scan individual documents
     print("\nScanning individual documents...\n")
@@ -272,7 +272,7 @@ def demo_all_behaviors(verbose: bool = False) -> None:
     print("DEMO 2: All on_detect Behaviors")
     print("=" * 70)
 
-    from agentshield import shield, PromptInjectionDetected
+    from pyagentshield import shield, PromptInjectionDetected
 
     retriever = SimpleRetriever(ALL_DOCUMENTS)
     llm = MockLLM()
@@ -324,7 +324,7 @@ def demo_all_behaviors(verbose: bool = False) -> None:
     # --------------------------------------------------------------------------
     print("\n  [3] Testing 'flag' mode...")
 
-    from agentshield import AgentShield
+    from pyagentshield import AgentShield
 
     config = get_shield_config()
     config["behavior"] = {"on_detect": "flag"}
@@ -344,7 +344,7 @@ def demo_all_behaviors(verbose: bool = False) -> None:
     # --------------------------------------------------------------------------
     print("\n  [4] Testing 'filter' mode...")
 
-    from agentshield.integrations.langchain import ShieldRunnable
+    from pyagentshield.integrations.langchain import ShieldRunnable
 
     shield_filter = ShieldRunnable(on_detect="filter")
 
@@ -366,8 +366,8 @@ def demo_langchain_runnable(verbose: bool = False) -> None:
     print("DEMO 3: Using ShieldRunnable (LangChain-style)")
     print("=" * 70)
 
-    from agentshield.integrations.langchain import ShieldRunnable
-    from agentshield import PromptInjectionDetected
+    from pyagentshield.integrations.langchain import ShieldRunnable
+    from pyagentshield import PromptInjectionDetected
 
     retriever = SimpleRetriever(ALL_DOCUMENTS)
 
@@ -419,7 +419,7 @@ def demo_finetuned_model(verbose: bool = False) -> None:
     print("DEMO 4: Finetuned Model with LLM Cleaning")
     print("=" * 70)
 
-    from agentshield import AgentShield
+    from pyagentshield import AgentShield
 
     print("\n  Configuration:")
     config = get_shield_config()
@@ -466,7 +466,7 @@ def demo_full_pipeline(verbose: bool = False) -> None:
     print("DEMO 5: End-to-End Agent Pipeline")
     print("=" * 70)
 
-    from agentshield import AgentShield
+    from pyagentshield import AgentShield
 
     # Initialize components
     retriever = SimpleRetriever(ALL_DOCUMENTS)

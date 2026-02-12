@@ -1,6 +1,6 @@
 """Tests for result dataclasses."""
 
-from agentshield.core.results import DetectionSignal, ScanDetails, ScanResult
+from pyagentshield.core.results import DetectionSignal, ScanDetails, ScanResult
 
 
 class TestDetectionSignal:

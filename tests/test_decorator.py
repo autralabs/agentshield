@@ -7,9 +7,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from agentshield.api.decorator import _extract_texts_from_value, shield
-from agentshield.core.exceptions import PromptInjectionDetected
-from agentshield.core.results import DetectionSignal, ScanResult
+from pyagentshield.api.decorator import _extract_texts_from_value, shield
+from pyagentshield.core.exceptions import PromptInjectionDetected
+from pyagentshield.core.results import DetectionSignal, ScanResult
 
 
 class TestExtractTexts:
@@ -56,7 +56,7 @@ class TestShieldDecorator:
         mock.scan.return_value = [result]
         return mock
 
-    @patch("agentshield.core.shield.AgentShield")
+    @patch("pyagentshield.core.shield.AgentShield")
     def test_clean_input_passes_through(self, MockShieldClass):
         mock_instance = self._mock_shield(is_suspicious=False)
         MockShieldClass.return_value = mock_instance
@@ -68,7 +68,7 @@ class TestShieldDecorator:
         result = my_func("safe text")
         assert result == "processed: safe text"
 
-    @patch("agentshield.core.shield.AgentShield")
+    @patch("pyagentshield.core.shield.AgentShield")
     def test_block_mode_raises(self, MockShieldClass):
         mock_instance = self._mock_shield(is_suspicious=True, confidence=0.9)
         MockShieldClass.return_value = mock_instance
@@ -80,7 +80,7 @@ class TestShieldDecorator:
         with pytest.raises(PromptInjectionDetected):
             my_func("malicious text")
 
-    @patch("agentshield.core.shield.AgentShield")
+    @patch("pyagentshield.core.shield.AgentShield")
     def test_warn_mode_logs_and_continues(self, MockShieldClass, caplog):
         mock_instance = self._mock_shield(is_suspicious=True, confidence=0.9)
         MockShieldClass.return_value = mock_instance
@@ -94,7 +94,7 @@ class TestShieldDecorator:
         assert result == "continued"
         assert "injection detected" in caplog.text.lower() or "Prompt injection" in caplog.text
 
-    @patch("agentshield.core.shield.AgentShield")
+    @patch("pyagentshield.core.shield.AgentShield")
     def test_flag_mode_passes_through(self, MockShieldClass):
         mock_instance = self._mock_shield(is_suspicious=True, confidence=0.9)
         MockShieldClass.return_value = mock_instance
@@ -106,7 +106,7 @@ class TestShieldDecorator:
         result = my_func("flagged text")
         assert result == "passed"
 
-    @patch("agentshield.core.shield.AgentShield")
+    @patch("pyagentshield.core.shield.AgentShield")
     def test_confidence_threshold_filtering(self, MockShieldClass):
         """Low-confidence detections should not trigger block."""
         mock_instance = self._mock_shield(is_suspicious=True, confidence=0.3)
@@ -120,7 +120,7 @@ class TestShieldDecorator:
         result = my_func("borderline text")
         assert result == "passed"
 
-    @patch("agentshield.core.shield.AgentShield")
+    @patch("pyagentshield.core.shield.AgentShield")
     def test_scan_args_selective(self, MockShieldClass):
         """Only specified args should be scanned."""
         mock_instance = self._mock_shield(is_suspicious=False)
@@ -137,7 +137,7 @@ class TestShieldDecorator:
         assert "query" not in scanned_texts
         assert "doc1" in scanned_texts
 
-    @patch("agentshield.core.shield.AgentShield")
+    @patch("pyagentshield.core.shield.AgentShield")
     def test_no_text_args_skips_scan(self, MockShieldClass):
         mock_instance = self._mock_shield()
         MockShieldClass.return_value = mock_instance

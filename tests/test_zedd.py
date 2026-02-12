@@ -5,11 +5,11 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from agentshield.core.config import ShieldConfig
-from agentshield.core.results import DetectionSignal
-from agentshield.detectors.base import DetectionContext
-from agentshield.detectors.zedd import ZEDDDetector
-from agentshield.threshold.manager import ThresholdManager
+from pyagentshield.core.config import ShieldConfig
+from pyagentshield.core.results import DetectionSignal
+from pyagentshield.detectors.base import DetectionContext
+from pyagentshield.detectors.zedd import ZEDDDetector
+from pyagentshield.threshold.manager import ThresholdManager
 
 
 class TestCosineComputation:

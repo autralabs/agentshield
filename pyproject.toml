@@ -3,8 +3,8 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "agentshield"
-version = "0.1.0"
+name = "pyagentshield"
+version = "0.1.1"
 description = "Prompt injection detection for Agents using ZEDD (Zero-Shot Embedding Drift Detection)"
 readme = "README.md"
 license = "MIT"
@@ -59,7 +59,7 @@ finetuned = [
 ]
 # Full training dependencies (for Google Colab or GPU servers)
 training = [
-    "agentshield[finetuned]",
+    "pyagentshield[finetuned]",
     "datasets>=2.14.0",
     "trl>=0.7.0",
     "wandb>=0.15.0",
@@ -75,10 +75,10 @@ dev = [
     "ruff>=0.1.0",
     "mypy>=1.0.0",
 ]
-all = ["agentshield[openai,langchain,finetuned,cli,mlx]"]
+all = ["pyagentshield[openai,langchain,finetuned,cli,mlx]"]
 
 [project.scripts]
-agentshield = "agentshield.cli.main:app"
+agentshield = "pyagentshield.cli.main:app"
 
 [project.urls]
 Homepage = "https://github.com/autralabs/agentshield"
@@ -87,7 +87,7 @@ Repository = "https://github.com/autralabs/agentshield"
 Issues = "https://github.com/autralabs/agentshield/issues"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/agentshield"]
+packages = ["src/pyagentshield"]
 
 [tool.ruff]
 target-version = "py39"
@@ -105,4 +105,4 @@ warn_unused_ignores = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-v --cov=agentshield --cov-report=term-missing"
+addopts = "-v --cov=pyagentshield --cov-report=term-missing"

@@ -19,10 +19,10 @@ When your agent retrieves external documents (from databases, APIs, or user uplo
 
 ```bash
 # Basic install
-pip install agentshield
+pip install pyagentshield
 
 # With all features (recommended)
-pip install agentshield[all]
+pip install pyagentshield[all]
 ```
 
 <details>
@@ -30,13 +30,13 @@ pip install agentshield[all]
 
 ```bash
 # CLI only
-pip install agentshield[cli]
+pip install pyagentshield[cli]
 
 # LangChain integration
-pip install agentshield[langchain]
+pip install pyagentshield[langchain]
 
 # OpenAI for LLM cleaning
-pip install agentshield[openai]
+pip install pyagentshield[openai]
 
 # Development
 git clone https://github.com/autralabs/agentshield.git
@@ -83,7 +83,7 @@ DEMO 4: Finetuned Model with LLM Cleaning
 ### Simple Scan
 
 ```python
-from agentshield import scan
+from pyagentshield import scan
 
 # Scan a single document
 result = scan("This is a normal document about Python programming.")
@@ -98,7 +98,7 @@ print(result.confidence)     # 0.67
 ### Using a Finetuned Model (Best Accuracy)
 
 ```python
-from agentshield import AgentShield
+from pyagentshield import AgentShield
 
 shield = AgentShield(config={
     "embeddings": {
@@ -124,7 +124,7 @@ print(f"Confidence: {result.confidence:.2%}")
 ### Decorator for Functions
 
 ```python
-from agentshield import shield
+from pyagentshield import shield
 
 @shield(on_detect="block")
 def process_documents(query: str, documents: list[str]) -> str:
@@ -143,7 +143,7 @@ def answer_question(query: str, documents: list[str]) -> str:
 ### LangChain Integration
 
 ```python
-from agentshield.integrations.langchain import ShieldRunnable
+from pyagentshield.integrations.langchain import ShieldRunnable
 
 # Insert into any LangChain chain
 chain = retriever | ShieldRunnable(on_detect="filter") | prompt | llm
@@ -279,7 +279,7 @@ agentshield config show
 agentshield config init
 
 # Validate a config file
-agentshield config validate agentshield.yaml
+agentshield config validate pyagentshield.yaml
 ```
 
 ## Configuration
@@ -289,7 +289,7 @@ AgentShield can be configured via code, YAML files, or environment variables.
 ### Full Configuration Example
 
 ```yaml
-# agentshield.yaml
+# pyagentshield.yaml
 
 embeddings:
   provider: local  # or "openai"
@@ -309,7 +309,7 @@ behavior:
 ### Code Configuration
 
 ```python
-from agentshield import AgentShield
+from pyagentshield import AgentShield
 
 shield = AgentShield(config={
     "embeddings": {
@@ -341,7 +341,7 @@ cp .env.example .env
 echo "OPENAI_API_KEY=sk-your-key-here" >> .env
 ```
 
-The `.env` file is automatically loaded when you import `agentshield`. See `.env.example` for all available options with detailed comments.
+The `.env` file is automatically loaded when you import `pyagentshield`. See `.env.example` for all available options with detailed comments.
 
 **Common variables:**
 ```bash
@@ -385,7 +385,7 @@ The cleaner removes potential injection patterns before comparing embeddings:
 Scan text for prompt injections.
 
 ```python
-from agentshield import scan
+from pyagentshield import scan
 
 # Single text
 result = scan("Some text")
@@ -402,7 +402,7 @@ results = scan(["Text 1", "Text 2", "Text 3"])
 Protect functions from prompt injections.
 
 ```python
-from agentshield import shield
+from pyagentshield import shield
 
 @shield(
     on_detect="block",        # "block", "warn", "flag", "filter"
@@ -418,7 +418,7 @@ def my_function(query: str, documents: list[str]) -> str:
 Full control over scanning and configuration.
 
 ```python
-from agentshield import AgentShield
+from pyagentshield import AgentShield
 
 shield = AgentShield(config={...})
 
@@ -435,7 +435,7 @@ threshold = shield.calibrate(corpus=["clean doc 1", "clean doc 2"])
 LangChain-compatible runnable for use in chains.
 
 ```python
-from agentshield.integrations.langchain import ShieldRunnable
+from pyagentshield.integrations.langchain import ShieldRunnable
 
 runnable = ShieldRunnable(
     on_detect="filter",         # "block", "filter", "flag", "warn"
@@ -488,7 +488,7 @@ safe_docs = runnable.invoke(documents)
 ## Exceptions
 
 ```python
-from agentshield import (
+from pyagentshield import (
     AgentShieldError,           # Base exception
     PromptInjectionDetected,  # Raised when blocking detected injection
     CalibrationError,         # Calibration failed

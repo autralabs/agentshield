@@ -6,9 +6,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from agentshield.core.exceptions import PromptInjectionDetected
-from agentshield.core.results import DetectionSignal, ScanResult
-from agentshield.integrations.langchain import ShieldRunnable
+from pyagentshield.core.exceptions import PromptInjectionDetected
+from pyagentshield.core.results import DetectionSignal, ScanResult
+from pyagentshield.integrations.langchain import ShieldRunnable
 
 
 def _make_safe_result():
@@ -29,7 +29,7 @@ def _make_suspicious_result():
 
 
 class TestShieldRunnableNormalization:
-    @patch("agentshield.core.shield.AgentShield")
+    @patch("pyagentshield.core.shield.AgentShield")
     def test_string_input(self, MockShield):
         mock_instance = MagicMock()
         mock_instance.scan.return_value = [_make_safe_result()]
@@ -39,7 +39,7 @@ class TestShieldRunnableNormalization:
         result = runnable.invoke("Hello world")
         assert result == "Hello world"
 
-    @patch("agentshield.core.shield.AgentShield")
+    @patch("pyagentshield.core.shield.AgentShield")
     def test_list_str_input(self, MockShield):
         mock_instance = MagicMock()
         mock_instance.scan.return_value = [_make_safe_result(), _make_safe_result()]
@@ -49,7 +49,7 @@ class TestShieldRunnableNormalization:
         result = runnable.invoke(["text1", "text2"])
         assert result == ["text1", "text2"]
 
-    @patch("agentshield.core.shield.AgentShield")
+    @patch("pyagentshield.core.shield.AgentShield")
     def test_dict_with_context_key(self, MockShield):
         mock_instance = MagicMock()
         mock_instance.scan.return_value = [_make_safe_result()]
@@ -61,7 +61,7 @@ class TestShieldRunnableNormalization:
         assert isinstance(result, dict)
         assert "context" in result
 
-    @patch("agentshield.core.shield.AgentShield")
+    @patch("pyagentshield.core.shield.AgentShield")
     def test_empty_list(self, MockShield):
         mock_instance = MagicMock()
         MockShield.return_value = mock_instance
@@ -70,7 +70,7 @@ class TestShieldRunnableNormalization:
         result = runnable.invoke([])
         assert result == []
 
-    @patch("agentshield.core.shield.AgentShield")
+    @patch("pyagentshield.core.shield.AgentShield")
     def test_document_objects(self, MockShield):
         mock_instance = MagicMock()
         mock_instance.scan.return_value = [_make_safe_result()]
@@ -86,7 +86,7 @@ class TestShieldRunnableNormalization:
 
 
 class TestShieldRunnableModes:
-    @patch("agentshield.core.shield.AgentShield")
+    @patch("pyagentshield.core.shield.AgentShield")
     def test_block_raises_exception(self, MockShield):
         mock_instance = MagicMock()
         mock_instance.scan.return_value = [_make_suspicious_result()]
@@ -96,7 +96,7 @@ class TestShieldRunnableModes:
         with pytest.raises(PromptInjectionDetected):
             runnable.invoke(["malicious doc"])
 
-    @patch("agentshield.core.shield.AgentShield")
+    @patch("pyagentshield.core.shield.AgentShield")
     def test_filter_removes_suspicious(self, MockShield):
         mock_instance = MagicMock()
         mock_instance.scan.return_value = [
@@ -111,7 +111,7 @@ class TestShieldRunnableModes:
         assert len(result) == 2
         assert "malicious" not in result
 
-    @patch("agentshield.core.shield.AgentShield")
+    @patch("pyagentshield.core.shield.AgentShield")
     def test_flag_adds_metadata(self, MockShield):
         mock_instance = MagicMock()
         mock_instance.scan.return_value = [_make_suspicious_result()]
@@ -125,7 +125,7 @@ class TestShieldRunnableModes:
         result = runnable.invoke([doc])
         assert "_agentshield" in doc.metadata
 
-    @patch("agentshield.core.shield.AgentShield")
+    @patch("pyagentshield.core.shield.AgentShield")
     def test_warn_passes_through(self, MockShield):
         mock_instance = MagicMock()
         mock_instance.scan.return_value = [_make_suspicious_result()]
@@ -135,7 +135,7 @@ class TestShieldRunnableModes:
         result = runnable.invoke(["suspicious text"])
         assert len(result) == 1
 
-    @patch("agentshield.core.shield.AgentShield")
+    @patch("pyagentshield.core.shield.AgentShield")
     def test_confidence_threshold(self, MockShield):
         """Low-confidence results should not trigger actions."""
         low_confidence = ScanResult(

@@ -6,6 +6,7 @@ __pycache__/
 .claude/
 ARCHITECTURE.md
 CLAUDE.md
+LANDING_PAGE_INSTRUCTIONS.md
 .DS_Store
 # C extensions
 *.so

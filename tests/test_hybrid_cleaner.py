@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from agentshield.cleaning.hybrid import HybridCleaner, HybridMode
-from agentshield.core.exceptions import CleaningError
+from pyagentshield.cleaning.hybrid import HybridCleaner, HybridMode
+from pyagentshield.core.exceptions import CleaningError
 
 
 class FakeCleaner:

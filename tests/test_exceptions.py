@@ -1,6 +1,6 @@
 """Tests for custom exceptions."""
 
-from agentshield.core.exceptions import (
+from pyagentshield.core.exceptions import (
     AgentShieldError,
     CalibrationError,
     CleaningError,
@@ -8,7 +8,7 @@ from agentshield.core.exceptions import (
     EmbeddingError,
     PromptInjectionDetected,
 )
-from agentshield.core.results import ScanDetails, ScanResult
+from pyagentshield.core.results import ScanDetails, ScanResult
 
 
 class TestExceptionHierarchy:

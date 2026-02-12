@@ -2,7 +2,7 @@
 
 import pytest
 
-from agentshield.cleaning.heuristic import HeuristicCleaner
+from pyagentshield.cleaning.heuristic import HeuristicCleaner
 
 
 @pytest.fixture

@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from agentshield.threshold.registry import ThresholdRegistry
-from agentshield.threshold.manager import ThresholdManager
+from pyagentshield.threshold.registry import ThresholdRegistry
+from pyagentshield.threshold.manager import ThresholdManager
 
 
 class TestThresholdRegistry:

@@ -8,8 +8,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from agentshield.core.exceptions import AgentShieldError, SetupError
-from agentshield.core.setup import SetupResult, is_model_cached, setup
+from pyagentshield.core.exceptions import AgentShieldError, SetupError
+from pyagentshield.core.setup import SetupResult, is_model_cached, setup
 
 
 class TestSetupError:
@@ -116,10 +116,10 @@ class TestSetup:
 
 
 class TestLocalProviderWarning:
-    @patch("agentshield.core.setup.is_model_cached", return_value=False)
+    @patch("pyagentshield.core.setup.is_model_cached", return_value=False)
     def test_warns_when_not_cached(self, mock_cached):
         """LocalEmbeddingProvider should warn when model is not cached."""
-        from agentshield.providers.local import LocalEmbeddingProvider
+        from pyagentshield.providers.local import LocalEmbeddingProvider
 
         provider = LocalEmbeddingProvider(model_name="uncached-model")
 
@@ -131,11 +131,11 @@ class TestLocalProviderWarning:
             except Exception:
                 pass
 
-    @patch("agentshield.core.setup.is_model_cached", return_value=True)
+    @patch("pyagentshield.core.setup.is_model_cached", return_value=True)
     def test_no_warning_when_cached(self, mock_cached):
         """No warning when model is already cached."""
         import warnings
-        from agentshield.providers.local import LocalEmbeddingProvider
+        from pyagentshield.providers.local import LocalEmbeddingProvider
 
         provider = LocalEmbeddingProvider(model_name="cached-model")
 

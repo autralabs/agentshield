@@ -7,9 +7,9 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from agentshield.core.config import ShieldConfig
-from agentshield.core.results import ScanResult
-from agentshield.core.shield import AgentShield
+from pyagentshield.core.config import ShieldConfig
+from pyagentshield.core.results import ScanResult
+from pyagentshield.core.shield import AgentShield
 
 
 class TestShieldInit:
@@ -48,7 +48,7 @@ class TestShieldScan:
 
     def _make_shield_with_mocks(self):
         """Create a shield with mocked detector."""
-        from agentshield.core.results import DetectionSignal
+        from pyagentshield.core.results import DetectionSignal
 
         shield = AgentShield()
 
@@ -75,7 +75,7 @@ class TestShieldScan:
         assert len(results) == 3
 
     def test_suspicious_result(self):
-        from agentshield.core.results import DetectionSignal
+        from pyagentshield.core.results import DetectionSignal
 
         shield = AgentShield()
         mock_detector = MagicMock()
@@ -94,7 +94,7 @@ class TestShieldScan:
     def test_cleaner_info(self):
         shield = AgentShield()
         # Force cleaner creation by accessing the property through a mock
-        from agentshield.cleaning.heuristic import HeuristicCleaner
+        from pyagentshield.cleaning.heuristic import HeuristicCleaner
         shield._text_cleaner = HeuristicCleaner()
 
         info = shield.get_cleaner_info()

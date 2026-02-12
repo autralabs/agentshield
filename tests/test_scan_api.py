@@ -7,10 +7,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from agentshield.core.results import ScanResult
+from pyagentshield.core.results import ScanResult
 
 # Access the actual module (not the function exported via api/__init__.py)
-_scan_mod = sys.modules["agentshield.api.scan"]
+_scan_mod = sys.modules["pyagentshield.api.scan"]
 
 
 class TestScanFunction:

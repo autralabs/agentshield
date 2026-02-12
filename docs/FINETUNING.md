@@ -46,7 +46,7 @@ The script will:
 ### Step 4: Use Your Finetuned Model
 
 ```python
-from agentshield import AgentShield
+from pyagentshield import AgentShield
 
 shield = AgentShield(config={
     "embeddings": {
@@ -128,7 +128,7 @@ The paper uses a 2-component GMM to find the optimal threshold:
 ### YAML Configuration
 
 ```yaml
-# agentshield.yaml
+# pyagentshield.yaml
 
 embeddings:
   provider: local
@@ -225,7 +225,7 @@ If the script is interrupted, it will resume from where it left off.
 ### Using Finetuned Embeddings
 
 ```python
-from agentshield import AgentShield
+from pyagentshield import AgentShield
 
 # Auto-loads threshold from model's calibration.json
 shield = AgentShield(config={
