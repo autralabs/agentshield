@@ -71,6 +71,11 @@ class AgentShield:
         self.config = ShieldConfig.load(config)
         self._setup_logging()
 
+        # Telemetry client (eager — just an if-check when disabled)
+        from pyagentshield.telemetry.client import create_telemetry_client
+        self._telemetry = create_telemetry_client(self.config.telemetry)
+        self._session_id = __import__("uuid").uuid4().hex
+
         # Lazy-initialized components
         self._embedding_provider: Optional[EmbeddingProvider] = None
         self._text_cleaner: Optional[TextCleaner] = None
@@ -268,12 +273,36 @@ class AgentShield:
             cleaning_method=cleaning_method,
         )
 
-        return ScanResult(
+        result = ScanResult(
             is_suspicious=is_suspicious,
             confidence=signal.score,
             signals={"zedd": signal},
             details=details,
         )
+
+        # Record telemetry event (no-op if disabled)
+        try:
+            from pyagentshield.telemetry.events import ScanEvent
+            import pyagentshield
+
+            event = ScanEvent(
+                sdk_version=pyagentshield.__version__,
+                session_id=self._session_id,
+                is_suspicious=is_suspicious,
+                confidence=signal.score,
+                drift_score=drift_score,
+                threshold=threshold,
+                embedding_model=self.config.embeddings.model,
+                cleaning_method=cleaning_method,
+                on_detect=self.config.behavior.on_detect,
+                project=self.config.telemetry.project,
+                environment=self.config.telemetry.environment,
+            )
+            self._telemetry.record(event)
+        except Exception:
+            logger.debug("Failed to record telemetry", exc_info=True)
+
+        return result
 
     def calibrate(
         self,
