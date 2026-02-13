@@ -125,6 +125,18 @@ class LoggingConfig(BaseModel):
     format: Literal["json", "text"] = "text"
 
 
+class TelemetryConfig(BaseModel):
+    """Configuration for telemetry to AgentShield Cloud."""
+
+    enabled: bool = True
+    api_key: Optional[str] = None
+    endpoint: str = "https://api.agentshield.dev/v1/telemetry"
+    project: Optional[str] = None
+    environment: Optional[str] = None
+    flush_interval: int = 30
+    batch_size: int = 50
+
+
 class ShieldConfig(BaseSettings):
     """
     Main configuration for AgentShield.
@@ -177,6 +189,7 @@ class ShieldConfig(BaseSettings):
     behavior: BehaviorConfig = Field(default_factory=BehaviorConfig)
     performance: PerformanceConfig = Field(default_factory=PerformanceConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
+    telemetry: TelemetryConfig = Field(default_factory=TelemetryConfig)
 
     def model_post_init(self, __context: Any) -> None:
         """Handle backward compatibility after initialization."""

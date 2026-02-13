@@ -39,7 +39,7 @@ from pyagentshield.core.setup import setup, is_model_cached, SetupResult
 from pyagentshield.api.scan import scan
 from pyagentshield.api.decorator import shield
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 __all__ = [
     # Main class

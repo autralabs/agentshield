@@ -117,3 +117,25 @@ logging:
 
   # Format: "text" or "json"
   format: text
+
+# =============================================================================
+# Telemetry Configuration (AgentShield Cloud)
+# =============================================================================
+telemetry:
+  # Enable/disable telemetry (default: true, but requires api_key to send)
+  enabled: true
+
+  # API key from AgentShield Cloud (required to activate telemetry)
+  # Also settable via AGENTSHIELD_TELEMETRY__API_KEY env var
+  api_key: null
+
+  # Cloud endpoint
+  endpoint: https://api.agentshield.dev/v1/telemetry
+
+  # Project and environment labels (appear in dashboard)
+  project: null       # e.g., "my-rag-app"
+  environment: null   # e.g., "production", "staging"
+
+  # Batching settings
+  flush_interval: 30  # seconds between flushes
+  batch_size: 50      # events per batch
