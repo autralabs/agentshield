@@ -330,8 +330,17 @@ class AgentShield:
         threshold = calibrator.calibrate(corpus)
 
         if save:
+            # Use ThresholdManager._build_fingerprint so the key matches
+            # what runtime lookup produces (uses actual cleaner.method,
+            # not config string — important for hybrid cleaners).
+            fp = self.threshold_manager._build_fingerprint(
+                model_name=self.embedding_provider.model_name,
+                embedding_provider=self.embedding_provider,
+                text_cleaner=self.text_cleaner,
+            )
+            key = fp or self.embedding_provider.model_name
             self.threshold_manager.set_threshold(
-                self.embedding_provider.model_name,
+                key,
                 threshold,
                 save=True,
             )
