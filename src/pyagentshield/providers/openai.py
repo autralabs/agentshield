@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import os
+import threading
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import urlparse
 
 import numpy as np
 from numpy.typing import NDArray
@@ -43,6 +47,8 @@ class OpenAIEmbeddingProvider:
         cache_embeddings: bool = True,
         base_url: Optional[str] = None,
         default_headers: Optional[Dict[str, str]] = None,
+        dimensions: Optional[int] = None,
+        cache_dir: Optional[Path] = None,
     ):
         """
         Initialize the OpenAI embedding provider.
@@ -54,6 +60,10 @@ class OpenAIEmbeddingProvider:
             base_url: Custom API base URL for OpenAI-compatible endpoints
                 (e.g. OpenRouter, Together, Ollama, vLLM)
             default_headers: Extra HTTP headers sent with every request
+            dimensions: Explicit embedding dimensions. If not provided, uses
+                static lookup, disk cache, or discovers from first API response.
+            cache_dir: Directory for dimension cache persistence.
+                Defaults to ``~/.agentshield``.
         """
         self._model_name = model_name
         self._api_key = api_key or os.environ.get("OPENAI_API_KEY")
@@ -61,6 +71,7 @@ class OpenAIEmbeddingProvider:
         self._base_url = base_url
         self._default_headers = default_headers
         self._provider_type = "openai"
+        self._cache_dir = cache_dir or Path.home() / ".agentshield"
 
         if not self._api_key:
             raise EmbeddingError(
@@ -68,20 +79,118 @@ class OpenAIEmbeddingProvider:
                 "or pass api_key parameter."
             )
 
-        # Get dimensions
-        self._dimensions = self.DIMENSIONS.get(model_name)
-        if self._dimensions is None:
-            logger.warning(
-                f"Unknown model {model_name}, assuming 1536 dimensions. "
-                f"Known models: {list(self.DIMENSIONS.keys())}"
-            )
-            self._dimensions = 1536
+        # Dimension resolution: explicit > static dict > disk cache > provisional
+        self._dim_lock = threading.Lock()
+        if dimensions is not None:
+            self._dimensions = dimensions
+            self._dimensions_confirmed = True
+        else:
+            static = self.DIMENSIONS.get(model_name)
+            if static is not None:
+                self._dimensions = static
+                self._dimensions_confirmed = True
+            else:
+                # Try disk cache
+                cached_dims = self._load_cached_dimensions()
+                if cached_dims is not None:
+                    self._dimensions = cached_dims
+                    self._dimensions_confirmed = True
+                    logger.debug(
+                        f"Loaded cached dimensions {cached_dims} for {model_name}"
+                    )
+                else:
+                    # Will be discovered on first encode() call
+                    self._dimensions = 1536  # provisional fallback
+                    self._dimensions_confirmed = False
+                    logger.info(
+                        f"Unknown model {model_name}, dimensions will be "
+                        f"discovered on first embedding call."
+                    )
 
         # Lazy load client
         self._client: Any = None
 
         # In-memory cache
         self._cache: Dict[str, NDArray[np.floating]] = {}
+
+    # ------------------------------------------------------------------
+    # Dimension disk cache
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _extract_host(base_url: Optional[str]) -> str:
+        """Extract host identifier for dimension cache keying."""
+        if not base_url:
+            return "openai.com"
+        parsed = urlparse(base_url)
+        host = parsed.hostname
+        if not host:
+            return "openai.com"
+        port = parsed.port
+        if port is None:
+            return host
+        # Strip default ports only
+        if (parsed.scheme == "https" and port == 443) or (
+            parsed.scheme == "http" and port == 80
+        ):
+            return host
+        return f"{host}:{port}"
+
+    def _dim_cache_key(self) -> str:
+        """Cache key for dimension persistence."""
+        host = self._extract_host(self._base_url)
+        return f"openai::{self._model_name}::{host}"
+
+    def _load_cached_dimensions(self) -> Optional[int]:
+        """Load dimensions from disk cache."""
+        cache_file = self._cache_dir / "dimensions_cache.json"
+        if not cache_file.exists():
+            return None
+        try:
+            with open(cache_file) as f:
+                data = json.load(f)
+            return data.get(self._dim_cache_key())
+        except Exception:
+            return None
+
+    def _save_cached_dimensions(self, dims: int) -> None:
+        """Save dimensions to disk cache."""
+        cache_file = self._cache_dir / "dimensions_cache.json"
+        try:
+            self._cache_dir.mkdir(parents=True, exist_ok=True)
+            data: Dict[str, int] = {}
+            if cache_file.exists():
+                with open(cache_file) as f:
+                    data = json.load(f)
+            data[self._dim_cache_key()] = dims
+            tmp = cache_file.with_suffix(".json.tmp")
+            with open(tmp, "w") as f:
+                json.dump(data, f, indent=2)
+            tmp.replace(cache_file)
+        except Exception:
+            logger.debug("Failed to save dimensions cache", exc_info=True)
+
+    # ------------------------------------------------------------------
+    # Dimension discovery
+    # ------------------------------------------------------------------
+
+    def _confirm_dimensions(self, embedding_len: int) -> None:
+        """Confirm dimensions from an actual API response (thread-safe)."""
+        if self._dimensions_confirmed:
+            return
+        with self._dim_lock:
+            if self._dimensions_confirmed:
+                return
+            self._dimensions = embedding_len
+            self._dimensions_confirmed = True
+            logger.info(
+                f"Discovered {self._dimensions} dimensions for {self._model_name}"
+            )
+            self._save_cached_dimensions(embedding_len)
+
+    # ------------------------------------------------------------------
+    # Client
+    # ------------------------------------------------------------------
 
     def _get_client(self) -> Any:
         """Get or create OpenAI client."""
@@ -147,6 +256,9 @@ class OpenAIEmbeddingProvider:
         except Exception as e:
             raise EmbeddingError(f"OpenAI embedding failed: {e}") from e
 
+        # Discover dimensions from first real response
+        self._confirm_dimensions(len(embedding))
+
         # Cache result
         if self._cache_embeddings:
             self._cache[key] = embedding
@@ -171,30 +283,31 @@ class OpenAIEmbeddingProvider:
         if not texts:
             return np.zeros((0, self.dimensions), dtype=np.float32)
 
-        # Check which texts are already cached
-        results: List[Optional[NDArray[np.floating]]] = [None] * len(texts)
+        # Separate empty and non-empty texts
+        empty_indices: List[int] = []
         texts_to_encode: List[Tuple[int, str]] = []
 
-        if self._cache_embeddings:
-            for i, text in enumerate(texts):
-                if not text or not text.strip():
-                    results[i] = np.zeros(self.dimensions, dtype=np.float32)
-                    continue
-
-                key = self._cache_key(text)
-                if key in self._cache:
-                    results[i] = self._cache[key]
+        for i, text in enumerate(texts):
+            if not text or not text.strip():
+                empty_indices.append(i)
+            elif self._cache_embeddings:
+                cache_key = self._cache_key(text)
+                if cache_key in self._cache:
+                    # Will be filled from cache below
+                    pass
                 else:
                     texts_to_encode.append((i, text))
-        else:
-            texts_to_encode = [
-                (i, t) for i, t in enumerate(texts)
-                if t and t.strip()
-            ]
-            # Set zeros for empty texts
-            for i, t in enumerate(texts):
-                if not t or not t.strip():
-                    results[i] = np.zeros(self.dimensions, dtype=np.float32)
+            else:
+                texts_to_encode.append((i, text))
+
+        # Build results dict for non-empty cached texts
+        results: Dict[int, NDArray[np.floating]] = {}
+        if self._cache_embeddings:
+            for i, text in enumerate(texts):
+                if text and text.strip():
+                    cache_key = self._cache_key(text)
+                    if cache_key in self._cache:
+                        results[i] = self._cache[cache_key]
 
         # Encode uncached texts in batches
         if texts_to_encode:
@@ -212,17 +325,23 @@ class OpenAIEmbeddingProvider:
                 except Exception as e:
                     raise EmbeddingError(f"OpenAI embedding batch failed: {e}") from e
 
-                # Process results
                 for idx, data in zip(indices, response.data):
                     emb = np.array(data.embedding, dtype=np.float32)
                     results[idx] = emb
 
-                    if self._cache_embeddings:
-                        text = texts[idx]
-                        self._cache[self._cache_key(text)] = emb
+                    # Discover dimensions from first real embedding
+                    self._confirm_dimensions(len(emb))
 
-        # Stack results
-        return np.vstack(results)  # type: ignore
+                    if self._cache_embeddings:
+                        self._cache[self._cache_key(texts[idx])] = emb
+
+        # Now fill empty texts with zeros using confirmed dimensions
+        for i in empty_indices:
+            results[i] = np.zeros(self.dimensions, dtype=np.float32)
+
+        # Stack in order
+        ordered = [results[i] for i in range(len(texts))]
+        return np.vstack(ordered)
 
     def clear_cache(self) -> None:
         """Clear the embedding cache."""

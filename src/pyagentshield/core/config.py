@@ -24,6 +24,7 @@ class EmbeddingConfig(BaseModel):
     api_key: Optional[str] = None
     base_url: Optional[str] = None
     default_headers: Optional[Dict[str, str]] = None
+    dimensions: Optional[int] = None
 
     # MLX-specific settings (Apple Silicon)
     mlx_cache_dir: Optional[str] = None  # Cache for converted MLX models
