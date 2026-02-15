@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import numpy as np
+
 from pyagentshield.core.config import ShieldConfig
 
 
@@ -98,3 +100,122 @@ class TestConfigAndWiring:
             "telemetry": {"enabled": False},
         })
         assert shield.embedding_provider._cache_embeddings is False
+
+    def test_config_parses_dimensions(self):
+        config = ShieldConfig.from_dict({
+            "embeddings": {
+                "provider": "openai",
+                "dimensions": 768,
+            }
+        })
+        assert config.embeddings.dimensions == 768
+
+
+class TestCapabilityDiscovery:
+    @patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"})
+    def test_explicit_dimensions_used(self):
+        from pyagentshield.providers.openai import OpenAIEmbeddingProvider
+
+        provider = OpenAIEmbeddingProvider(
+            model_name="custom-model",
+            dimensions=768,
+        )
+        assert provider.dimensions == 768
+        assert provider._dimensions_confirmed is True
+
+    @patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"})
+    def test_unknown_model_provisional_dimensions(self, tmp_path):
+        from pyagentshield.providers.openai import OpenAIEmbeddingProvider
+
+        provider = OpenAIEmbeddingProvider(
+            model_name="unknown-provider-model",
+            cache_dir=tmp_path,
+        )
+        assert provider.dimensions == 1536
+        assert provider._dimensions_confirmed is False
+
+    @patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"})
+    def test_dimensions_discovered_from_first_encode(self, tmp_path):
+        from pyagentshield.providers.openai import OpenAIEmbeddingProvider
+
+        provider = OpenAIEmbeddingProvider(
+            model_name="custom-model-512",
+            cache_dir=tmp_path,
+        )
+
+        mock_response = MagicMock()
+        mock_data = MagicMock()
+        mock_data.embedding = list(np.random.randn(512).astype(float))
+        mock_response.data = [mock_data]
+
+        mock_client = MagicMock()
+        mock_client.embeddings.create.return_value = mock_response
+        provider._client = mock_client
+
+        emb = provider.encode("test text")
+        assert len(emb) == 512
+        assert provider._dimensions_confirmed is True
+        assert provider.dimensions == 512
+
+    @patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"})
+    def test_batch_empty_and_real_no_crash(self, tmp_path):
+        from pyagentshield.providers.openai import OpenAIEmbeddingProvider
+
+        provider = OpenAIEmbeddingProvider(
+            model_name="unknown-512-model",
+            cache_dir=tmp_path,
+        )
+
+        mock_response = MagicMock()
+        mock_data = MagicMock()
+        mock_data.embedding = list(np.random.randn(512).astype(float))
+        mock_response.data = [mock_data]
+
+        mock_client = MagicMock()
+        mock_client.embeddings.create.return_value = mock_response
+        provider._client = mock_client
+
+        result = provider.encode_batch(["", "hello"])
+        assert result.shape == (2, 512)
+        assert np.allclose(result[0], 0.0)
+        assert provider._dimensions_confirmed is True
+        assert provider.dimensions == 512
+
+    @patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"})
+    def test_dimensions_saved_and_loaded(self, tmp_path):
+        from pyagentshield.providers.openai import OpenAIEmbeddingProvider
+
+        p1 = OpenAIEmbeddingProvider(
+            model_name="disk-cache-model",
+            cache_dir=tmp_path,
+        )
+        mock_response = MagicMock()
+        mock_data = MagicMock()
+        mock_data.embedding = list(np.random.randn(384).astype(float))
+        mock_response.data = [mock_data]
+        mock_client = MagicMock()
+        mock_client.embeddings.create.return_value = mock_response
+        p1._client = mock_client
+        p1.encode("discover dims")
+        assert p1.dimensions == 384
+
+        p2 = OpenAIEmbeddingProvider(
+            model_name="disk-cache-model",
+            cache_dir=tmp_path,
+        )
+        assert p2._dimensions_confirmed is True
+        assert p2.dimensions == 384
+
+    @patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"})
+    def test_different_ports_different_dim_cache_keys(self):
+        from pyagentshield.providers.openai import OpenAIEmbeddingProvider
+
+        p1 = OpenAIEmbeddingProvider(
+            model_name="nomic-embed-text",
+            base_url="http://localhost:11434/v1",
+        )
+        p2 = OpenAIEmbeddingProvider(
+            model_name="nomic-embed-text",
+            base_url="http://localhost:8000/v1",
+        )
+        assert p1._dim_cache_key() != p2._dim_cache_key()

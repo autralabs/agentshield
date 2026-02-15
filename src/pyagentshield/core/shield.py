@@ -138,6 +138,8 @@ class AgentShield:
                 cache_embeddings=self.config.performance.cache_embeddings,
                 base_url=self.config.embeddings.base_url,
                 default_headers=self.config.embeddings.default_headers,
+                dimensions=self.config.embeddings.dimensions,
+                cache_dir=get_cache_dir(self.config),
             )
         elif self.config.embeddings.provider == "mlx":
             from pyagentshield.providers.mlx import MLXEmbeddingProvider
