@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 
 import pytest
 
+from pyagentshield.threshold.fingerprint import create_pipeline_fingerprint
 from pyagentshield.threshold.registry import ThresholdRegistry
 from pyagentshield.threshold.manager import ThresholdManager
 
@@ -107,6 +109,27 @@ class TestThresholdManager:
         # With explicit default, has_threshold returns True for anything
         assert manager.has_threshold("anything")
 
+    def test_has_threshold_respects_pipeline_rules(self, tmp_cache_dir):
+        from tests.conftest import MockEmbeddingProvider, MockTextCleaner
+
+        manager = ThresholdManager(cache_dir=tmp_cache_dir)
+        provider = MockEmbeddingProvider(model_name="all-MiniLM-L6-v2")
+        heuristic_cleaner = MockTextCleaner(method="heuristic")
+        llm_cleaner = MockTextCleaner(method="llm")
+
+        # Heuristic path can use registry
+        assert manager.has_threshold(
+            "all-MiniLM-L6-v2",
+            embedding_provider=provider,
+            text_cleaner=heuristic_cleaner,
+        )
+        # Non-heuristic path cannot rely on heuristic-only registry
+        assert not manager.has_threshold(
+            "all-MiniLM-L6-v2",
+            embedding_provider=provider,
+            text_cleaner=llm_cleaner,
+        )
+
     def test_list_thresholds(self, tmp_cache_dir):
         manager = ThresholdManager(cache_dir=tmp_cache_dir)
         manager.set_threshold("custom-model", 0.5, save=False)
@@ -132,3 +155,160 @@ class TestThresholdManager:
             str(model_dir), auto_calibrate=False
         )
         assert threshold == pytest.approx(0.0083)
+
+    # ---- Fingerprint-based keying tests (v0.1.3) ----
+
+    def test_fingerprint_lookup(self, tmp_cache_dir, mock_embedder, mock_cleaner):
+        """Threshold stored with fingerprint key is retrieved via fingerprint."""
+        manager = ThresholdManager(cache_dir=tmp_cache_dir)
+        fp = create_pipeline_fingerprint("local", "mock-model", "mock")
+        manager.set_threshold(fp, 0.35, save=True)
+
+        threshold = manager.get_threshold(
+            "mock-model",
+            embedding_provider=mock_embedder,
+            text_cleaner=mock_cleaner,
+            auto_calibrate=False,
+        )
+        assert threshold == 0.35
+
+    def test_same_model_different_cleaners(self, tmp_cache_dir):
+        """Same model + different cleaners = different thresholds."""
+        manager = ThresholdManager(cache_dir=tmp_cache_dir)
+
+        fp_heuristic = create_pipeline_fingerprint("local", "my-model", "heuristic")
+        fp_llm = create_pipeline_fingerprint("local", "my-model", "llm", "gpt-4o-mini")
+
+        manager.set_threshold(fp_heuristic, 0.20, save=False)
+        manager.set_threshold(fp_llm, 0.30, save=False)
+
+        assert manager._custom_thresholds[fp_heuristic] == 0.20
+        assert manager._custom_thresholds[fp_llm] == 0.30
+        assert fp_heuristic != fp_llm
+
+    def test_same_model_different_base_urls(self, tmp_cache_dir):
+        """Same model on different providers = different fingerprints."""
+        fp1 = create_pipeline_fingerprint("openai.com", "text-embedding-3-small", "heuristic")
+        fp2 = create_pipeline_fingerprint("openrouter.ai", "text-embedding-3-small", "heuristic")
+
+        manager = ThresholdManager(cache_dir=tmp_cache_dir)
+        manager.set_threshold(fp1, 0.26, save=False)
+        manager.set_threshold(fp2, 0.28, save=False)
+
+        assert manager._custom_thresholds[fp1] == 0.26
+        assert manager._custom_thresholds[fp2] == 0.28
+
+    def test_backward_compat_model_name_only(self, tmp_cache_dir):
+        """get_threshold(model_name='all-MiniLM-L6-v2') still works via registry."""
+        manager = ThresholdManager(cache_dir=tmp_cache_dir)
+        threshold = manager.get_threshold("all-MiniLM-L6-v2", auto_calibrate=False)
+        assert threshold == 0.23
+
+    def test_cache_migration_from_old_format(self, tmp_cache_dir):
+        """Old cache format is migrated: version marker added, keys preserved."""
+        cache_file = tmp_cache_dir / "custom_thresholds.json"
+        cache_file.write_text(json.dumps({"my-model": 0.42}))
+
+        manager = ThresholdManager(cache_dir=tmp_cache_dir)
+
+        # Old model-name key should be preserved as-is
+        assert "my-model" in manager._custom_thresholds
+        assert manager._custom_thresholds["my-model"] == 0.42
+        # Model-name fallback path should find it
+        assert manager.get_threshold("my-model", auto_calibrate=False) == 0.42
+
+    def test_legacy_custom_key_not_used_for_non_heuristic_pipeline(self, tmp_cache_dir):
+        """Legacy model-name custom thresholds should not apply to LLM pipelines."""
+        from tests.conftest import MockEmbeddingProvider, MockTextCleaner
+
+        cache_file = tmp_cache_dir / "custom_thresholds.json"
+        cache_file.write_text(json.dumps({"all-MiniLM-L6-v2": 0.99}))
+        manager = ThresholdManager(cache_dir=tmp_cache_dir)
+
+        provider = MockEmbeddingProvider(model_name="all-MiniLM-L6-v2")
+        llm_cleaner = MockTextCleaner(method="llm")
+
+        with pytest.raises(ValueError, match="No threshold found"):
+            manager.get_threshold(
+                "all-MiniLM-L6-v2",
+                embedding_provider=provider,
+                text_cleaner=llm_cleaner,
+                auto_calibrate=False,
+            )
+
+    def test_legacy_custom_skip_logs_reason(self, tmp_cache_dir, caplog):
+        """When legacy key is skipped for non-heuristic pipeline, reason is logged."""
+        from tests.conftest import MockEmbeddingProvider, MockTextCleaner
+
+        cache_file = tmp_cache_dir / "custom_thresholds.json"
+        cache_file.write_text(json.dumps({"all-MiniLM-L6-v2": 0.99}))
+        manager = ThresholdManager(cache_dir=tmp_cache_dir)
+
+        provider = MockEmbeddingProvider(model_name="all-MiniLM-L6-v2")
+        llm_cleaner = MockTextCleaner(method="llm")
+
+        with caplog.at_level(logging.INFO):
+            with pytest.raises(ValueError, match="No threshold found"):
+                manager.get_threshold(
+                    "all-MiniLM-L6-v2",
+                    embedding_provider=provider,
+                    text_cleaner=llm_cleaner,
+                    auto_calibrate=False,
+                )
+
+        assert "Ignoring legacy model-name custom threshold for non-heuristic pipeline" in caplog.text
+
+    def test_migration_creates_backup(self, tmp_cache_dir):
+        """Migration creates a .backup file with the original content."""
+        cache_file = tmp_cache_dir / "custom_thresholds.json"
+        original = {"my-model": 0.42}
+        cache_file.write_text(json.dumps(original))
+
+        ThresholdManager(cache_dir=tmp_cache_dir)
+
+        backup = cache_file.with_suffix(".json.backup")
+        assert backup.exists()
+        assert json.loads(backup.read_text()) == original
+
+    def test_fingerprint_with_registry_fallback(self, tmp_cache_dir, mock_cleaner):
+        """When no fingerprint match, heuristic pipelines can use registry fallback."""
+        from tests.conftest import MockEmbeddingProvider, MockTextCleaner
+
+        provider = MockEmbeddingProvider(model_name="all-MiniLM-L6-v2")
+        heuristic_cleaner = MockTextCleaner(method="heuristic")
+        manager = ThresholdManager(cache_dir=tmp_cache_dir)
+        threshold = manager.get_threshold(
+            "all-MiniLM-L6-v2",
+            embedding_provider=provider,
+            text_cleaner=heuristic_cleaner,
+            auto_calibrate=False,
+        )
+        # Should fall through fingerprint miss → registry hit
+        assert threshold == 0.23
+
+    def test_non_heuristic_pipeline_skips_registry_fallback(self, tmp_cache_dir):
+        """Registry values are heuristic-calibrated and must not apply to LLM cleaners."""
+        from tests.conftest import MockEmbeddingProvider, MockTextCleaner
+
+        provider = MockEmbeddingProvider(model_name="all-MiniLM-L6-v2")
+        llm_cleaner = MockTextCleaner(method="llm")
+        manager = ThresholdManager(cache_dir=tmp_cache_dir)
+
+        with pytest.raises(ValueError, match="No threshold found"):
+            manager.get_threshold(
+                "all-MiniLM-L6-v2",
+                embedding_provider=provider,
+                text_cleaner=llm_cleaner,
+                auto_calibrate=False,
+            )
+
+    def test_v2_cache_not_re_migrated(self, tmp_cache_dir):
+        """A v2 cache file is loaded as-is, not re-migrated."""
+        fp = create_pipeline_fingerprint("local", "test-model", "heuristic")
+        cache_file = tmp_cache_dir / "custom_thresholds.json"
+        cache_file.write_text(json.dumps({"_version": 2, fp: 0.55}))
+
+        manager = ThresholdManager(cache_dir=tmp_cache_dir)
+        assert manager._custom_thresholds[fp] == 0.55
+        # No backup should be created
+        assert not cache_file.with_suffix(".json.backup").exists()

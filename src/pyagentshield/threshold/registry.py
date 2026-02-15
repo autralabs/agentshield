@@ -52,12 +52,15 @@ class ThresholdRegistry:
     }
 
     @classmethod
-    def get(cls, model_name: str) -> Optional[float]:
+    def get(cls, model_name: str, cleaning_method: Optional[str] = None) -> Optional[float]:
         """
         Get pre-calibrated threshold for a model.
 
         Args:
             model_name: Name of the embedding model
+            cleaning_method: Optional cleaning method for future per-pipeline
+                registry entries. Currently ignored — all registry thresholds
+                were calibrated with the heuristic cleaner.
 
         Returns:
             Threshold value or None if not found
