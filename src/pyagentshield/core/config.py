@@ -20,6 +20,11 @@ class EmbeddingConfig(BaseModel):
     # OpenAI-specific settings
     openai_model: str = "text-embedding-3-small"
 
+    # OpenAI-compatible endpoint overrides
+    api_key: Optional[str] = None
+    base_url: Optional[str] = None
+    default_headers: Optional[Dict[str, str]] = None
+
     # MLX-specific settings (Apple Silicon)
     mlx_cache_dir: Optional[str] = None  # Cache for converted MLX models
     mlx_convert_from_hf: bool = True  # Auto-convert from HuggingFace
@@ -78,6 +83,11 @@ class CleaningConfig(BaseModel):
 
     # LLM cleaner settings (OpenAI API)
     llm_model: str = "gpt-3.5-turbo"
+
+    # OpenAI-compatible endpoint overrides (for LLM cleaner)
+    api_key: Optional[str] = None
+    base_url: Optional[str] = None
+    default_headers: Optional[Dict[str, str]] = None
 
     # Finetuned cleaner settings
     finetuned: FinetunedCleanerConfig = Field(default_factory=FinetunedCleanerConfig)

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 from pyagentshield.core.exceptions import CleaningError
 
@@ -49,6 +49,8 @@ Return ONLY the cleaned text with no explanation or commentary. If the entire te
         model: str = "gpt-3.5-turbo",
         api_key: Optional[str] = None,
         temperature: float = 0.0,
+        base_url: Optional[str] = None,
+        default_headers: Optional[Dict[str, str]] = None,
     ):
         """
         Initialize the LLM cleaner.
@@ -57,11 +59,15 @@ Return ONLY the cleaned text with no explanation or commentary. If the entire te
             model: OpenAI model to use
             api_key: OpenAI API key (uses OPENAI_API_KEY env var if not provided)
             temperature: Temperature for LLM (0.0 for deterministic)
+            base_url: Custom API base URL for OpenAI-compatible endpoints
+            default_headers: Extra HTTP headers sent with every request
         """
         self._method = "llm"
         self._model = model
         self._api_key = api_key or os.environ.get("OPENAI_API_KEY")
         self._temperature = temperature
+        self._base_url = base_url
+        self._default_headers = default_headers
 
         if not self._api_key:
             raise CleaningError(
@@ -83,7 +89,12 @@ Return ONLY the cleaned text with no explanation or commentary. If the entire te
                     "Install with: pip install pyagentshield[openai]"
                 ) from e
 
-            self._client = OpenAI(api_key=self._api_key)
+            kwargs: Dict[str, Any] = {"api_key": self._api_key}
+            if self._base_url:
+                kwargs["base_url"] = self._base_url
+            if self._default_headers:
+                kwargs["default_headers"] = self._default_headers
+            self._client = OpenAI(**kwargs)
 
         return self._client
 

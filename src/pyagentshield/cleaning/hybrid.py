@@ -342,11 +342,22 @@ def create_hybrid_cleaner(
 
             llm_kwargs = {
                 k: v for k, v in kwargs.items()
-                if k in ["model", "api_key", "temperature"]
+                if k in [
+                    "model", "api_key", "temperature",
+                    "base_url", "default_headers",
+                ]
             }
             # Rename 'model' to avoid conflict with finetuned
             if "llm_model" in kwargs:
                 llm_kwargs["model"] = kwargs["llm_model"]
+            # Allow llm-prefixed overrides for when both embed and clean
+            # base_urls differ
+            if "llm_base_url" in kwargs:
+                llm_kwargs["base_url"] = kwargs["llm_base_url"]
+            if "llm_api_key" in kwargs:
+                llm_kwargs["api_key"] = kwargs["llm_api_key"]
+            if "llm_default_headers" in kwargs:
+                llm_kwargs["default_headers"] = kwargs["llm_default_headers"]
             cleaners.append(LLMCleaner(**llm_kwargs))
 
         else:
