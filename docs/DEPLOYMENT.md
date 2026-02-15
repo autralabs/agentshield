@@ -1,6 +1,9 @@
 # Deployment Guide
 
-AgentShield uses sentence-transformers embedding models (~80MB) that are downloaded from HuggingFace Hub on first use. In production, you should pre-download the model during deployment to avoid cold-start latency.
+AgentShield can run local embeddings (`local`/`mlx`) or API embeddings (`openai` + compatible endpoints).
+
+- For local/MLX embeddings, models are downloaded on first use and should be preloaded in deployment.
+- For API embeddings, no model download occurs, but API reachability and credentials should be validated at startup.
 
 ## Quick Setup
 
@@ -22,6 +25,12 @@ result = pyagentshield.setup(config={
     "cleaning": {"method": "llm"},
 })
 ```
+
+## v0.1.3 Operational Notes
+
+- Thresholds are keyed by pipeline fingerprint (backend host + embedding model + cleaner identity), so changing cleaner/backend can legitimately produce a different threshold lookup.
+- Unknown OpenAI-compatible embedding dimensions are discovered from first successful responses and persisted to `dimensions_cache.json` in your cache dir (default `~/.agentshield`).
+- Keep `performance.cache_dir` on persistent storage if you want threshold and dimensions caches to survive restarts.
 
 ### CLI
 
@@ -244,7 +253,7 @@ result.validation_time_ms # float
 
 ## What Happens Without Setup
 
-If you skip `agentshield setup`, the model will be downloaded automatically on the first `scan()` call. A warning will be emitted:
+If you use local/MLX embeddings and skip `agentshield setup`, the model will be downloaded automatically on the first `scan()` call. A warning will be emitted:
 
 ```
 UserWarning: Embedding model 'all-MiniLM-L6-v2' is not cached and will be

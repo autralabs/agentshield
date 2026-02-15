@@ -17,6 +17,16 @@ embeddings:
   # OpenAI model (if provider: openai)
   openai_model: text-embedding-3-small
 
+  # OpenAI-compatible endpoint settings (for provider: openai)
+  # Supports OpenAI-compatible backends (OpenRouter/Together/Ollama/vLLM/etc.)
+  api_key: null
+  base_url: null
+  default_headers: null
+
+  # Optional explicit embedding size for unknown OpenAI-compatible models
+  # If null, dimensions are resolved from known mappings/cache/first response.
+  dimensions: null
+
   # MLX settings (if provider: mlx, for Apple Silicon Macs)
   mlx_cache_dir: null  # Default: ~/.agentshield/mlx_models
   mlx_convert_from_hf: true  # Auto-convert from HuggingFace
@@ -30,6 +40,11 @@ cleaning:
 
   # LLM cleaner (when method: llm)
   llm_model: gpt-3.5-turbo
+
+  # OpenAI-compatible endpoint settings for LLM cleaning (method: llm or hybrid with llm)
+  api_key: null
+  base_url: null
+  default_headers: null
 
   # Finetuned cleaner settings (when method: finetuned)
   finetuned:
@@ -77,7 +92,7 @@ cleaning:
 # =============================================================================
 zedd:
   # Detection threshold
-  # null = auto-calibrate based on embedding model
+  # null = auto-resolve/calibrate based on pipeline fingerprint
   # 0.0-1.0 = explicit threshold
   threshold: null
 

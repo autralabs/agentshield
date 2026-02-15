@@ -45,6 +45,15 @@ pip install -e ".[dev]"
 ```
 </details>
 
+## v0.1.3 Highlights
+
+- Pipeline-aware threshold keying now uses a fingerprint instead of model name only. Threshold identity includes embedding backend host + model + cleaning method and cleaner identity when relevant.
+- OpenAI-compatible endpoint support is available for embeddings and LLM cleaning through `base_url`, `api_key`, and `default_headers`.
+- Unknown embedding model dimensions are now discovered safely on first real response and persisted to a local dimensions cache.
+- Legacy threshold cache migration is backward-compatible and now restricted to heuristic-equivalent fallback paths for safety.
+
+See [CHANGELOG.md](CHANGELOG.md) for the full release entry.
+
 ## Try It Out
 
 Run the included demo to see AgentShield in action:
@@ -227,10 +236,18 @@ The `zedd.threshold` is the decision boundary for detecting prompt injections.
 
 ```yaml
 zedd:
-  threshold: null    # Auto-load from model's calibration.json (recommended)
+  threshold: null    # Auto-load or calibrate (recommended)
   # threshold: 0.01  # Higher = fewer false positives, might miss attacks
   # threshold: 0.005 # Lower = catch more attacks, more false positives
 ```
+
+### Threshold Identity (v0.1.3)
+
+Thresholds are now keyed by full pipeline fingerprint, not just embedding model name.
+
+- Identity includes embedding provider host, embedding model, cleaning method, and cleaner model/backend identity when applicable.
+- Registry fallbacks remain model-name based and are used only for heuristic-equivalent pipelines.
+- Legacy custom model-name thresholds are preserved for compatibility, but are not reused for non-heuristic pipelines.
 
 ## CLI Usage
 
@@ -262,8 +279,8 @@ agentshield scan document.txt --verbose
 # Calibrate for the default model
 agentshield calibrate
 
-# Calibrate for a specific model
-agentshield calibrate --model text-embedding-3-small
+# Calibrate for a specific local embedding model
+agentshield calibrate --model all-mpnet-base-v2
 
 # Calibrate with your own corpus
 agentshield calibrate --model all-MiniLM-L6-v2 --corpus ./my_clean_docs/
@@ -292,15 +309,27 @@ AgentShield can be configured via code, YAML files, or environment variables.
 # pyagentshield.yaml
 
 embeddings:
-  provider: local  # or "openai"
-  model: ./agentshield-embeddings-finetuned  # or HuggingFace model ID
+  provider: openai   # "local", "openai", or "mlx"
+  model: all-MiniLM-L6-v2         # Used by local/mlx providers
+  openai_model: text-embedding-3-small
+  api_key: null                   # Optional override (else OPENAI_API_KEY)
+  base_url: https://openrouter.ai/api/v1
+  default_headers:
+    HTTP-Referer: https://your-app.example
+  dimensions: null                # Optional explicit dimensions
+  mlx_cache_dir: null             # Used when provider: mlx
+  mlx_convert_from_hf: true
 
 cleaning:
-  method: llm              # "heuristic" (free) or "llm" (better accuracy)
-  llm_model: gpt-4o-mini   # When method: llm
+  method: llm              # "heuristic", "llm", "finetuned", or "hybrid"
+  llm_model: gpt-4o-mini
+  api_key: null            # Optional override for cleaner backend key
+  base_url: https://openrouter.ai/api/v1
+  default_headers:
+    HTTP-Referer: https://your-app.example
 
 zedd:
-  threshold: null  # null = auto-load from calibration.json
+  threshold: null  # null = auto-load or auto-calibrate per pipeline
 
 behavior:
   on_detect: flag  # "block", "warn", "flag", "filter"
@@ -313,15 +342,18 @@ from pyagentshield import AgentShield
 
 shield = AgentShield(config={
     "embeddings": {
-        "model": "./agentshield-embeddings-finetuned",
-        "provider": "local",
+        "provider": "openai",
+        "openai_model": "text-embedding-3-small",
+        "base_url": "https://openrouter.ai/api/v1",
+        "default_headers": {"HTTP-Referer": "https://your-app.example"},
     },
     "cleaning": {
         "method": "llm",
         "llm_model": "gpt-4o-mini",
+        "base_url": "https://openrouter.ai/api/v1",
     },
     "zedd": {
-        "threshold": None,  # Auto-load calibrated threshold
+        "threshold": None,  # Auto threshold per fingerprinted pipeline
     },
     "behavior": {
         "on_detect": "flag",
@@ -354,6 +386,14 @@ AGENTSHIELD_EMBEDDINGS__MODEL=./agentshield-embeddings-finetuned
 # Enable LLM cleaning for better accuracy
 AGENTSHIELD_CLEANING__METHOD=llm
 AGENTSHIELD_CLEANING__LLM_MODEL=gpt-4o-mini
+
+# OpenAI-compatible endpoints (OpenRouter, Together, Ollama, vLLM, etc.)
+AGENTSHIELD_EMBEDDINGS__BASE_URL=https://openrouter.ai/api/v1
+AGENTSHIELD_CLEANING__BASE_URL=https://openrouter.ai/api/v1
+
+# Optional endpoint-specific headers (JSON)
+AGENTSHIELD_EMBEDDINGS__DEFAULT_HEADERS='{"HTTP-Referer":"https://your-app.example"}'
+AGENTSHIELD_CLEANING__DEFAULT_HEADERS='{"HTTP-Referer":"https://your-app.example"}'
 ```
 
 ## Detection Modes (on_detect)
@@ -375,6 +415,8 @@ The cleaner removes potential injection patterns before comparing embeddings:
 |--------|----------|------|-------|----------|
 | `heuristic` | ~70% | Free | Fast | Testing, low-budget |
 | `llm` | ~90% | ~$0.0003/doc | Medium | **Production (recommended)** |
+| `finetuned` | ~85% | Free at runtime | Medium | Fully local cleaning |
+| `hybrid` | Depends on composition | Mixed | Medium | Multi-cleaner strategies and fallback chains |
 
 **Tip:** At $0.0003 per document, LLM cleaning costs about $0.30 for 1,000 documents.
 
@@ -464,6 +506,21 @@ safe_docs = runnable.invoke(documents)
 - `text-embedding-3-small`
 - `text-embedding-3-large`
 - `text-embedding-ada-002`
+- Any OpenAI-compatible embedding endpoint via `base_url`
+
+### MLX (Apple Silicon)
+
+- `provider: mlx` with sentence-transformers-compatible model IDs
+- Optional auto-convert from HuggingFace and local cache
+
+### Capability Discovery (OpenAI-Compatible)
+
+For unknown OpenAI-compatible embedding models, dimensions resolve in this order:
+
+1. `embeddings.dimensions` (explicit config)
+2. Built-in known model mapping
+3. `dimensions_cache.json` (persisted local cache)
+4. First successful embedding response (auto-discovery)
 
 ## Performance Tips
 
