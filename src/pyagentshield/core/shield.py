@@ -134,6 +134,10 @@ class AgentShield:
 
             return OpenAIEmbeddingProvider(
                 model_name=self.config.embeddings.openai_model,
+                api_key=self.config.embeddings.api_key,
+                cache_embeddings=self.config.performance.cache_embeddings,
+                base_url=self.config.embeddings.base_url,
+                default_headers=self.config.embeddings.default_headers,
             )
         elif self.config.embeddings.provider == "mlx":
             from pyagentshield.providers.mlx import MLXEmbeddingProvider
@@ -157,7 +161,12 @@ class AgentShield:
 
         elif method == "llm":
             from pyagentshield.cleaning.llm import LLMCleaner
-            return LLMCleaner(model=self.config.cleaning.llm_model)
+            return LLMCleaner(
+                model=self.config.cleaning.llm_model,
+                api_key=self.config.cleaning.api_key,
+                base_url=self.config.cleaning.base_url,
+                default_headers=self.config.cleaning.default_headers,
+            )
 
         elif method == "finetuned":
             from pyagentshield.cleaning.finetuned import FinetunedCleaner
@@ -199,6 +208,9 @@ class AgentShield:
                 temperature=ft_config.temperature,
                 # Pass LLM config for any LLM cleaners in hybrid
                 llm_model=self.config.cleaning.llm_model,
+                api_key=self.config.cleaning.api_key,
+                base_url=self.config.cleaning.base_url,
+                default_headers=self.config.cleaning.default_headers,
             )
 
         else:

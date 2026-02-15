@@ -41,6 +41,8 @@ class OpenAIEmbeddingProvider:
         model_name: str = "text-embedding-3-small",
         api_key: Optional[str] = None,
         cache_embeddings: bool = True,
+        base_url: Optional[str] = None,
+        default_headers: Optional[Dict[str, str]] = None,
     ):
         """
         Initialize the OpenAI embedding provider.
@@ -49,10 +51,16 @@ class OpenAIEmbeddingProvider:
             model_name: OpenAI embedding model name
             api_key: OpenAI API key (uses OPENAI_API_KEY env var if not provided)
             cache_embeddings: Whether to cache embeddings in memory
+            base_url: Custom API base URL for OpenAI-compatible endpoints
+                (e.g. OpenRouter, Together, Ollama, vLLM)
+            default_headers: Extra HTTP headers sent with every request
         """
         self._model_name = model_name
         self._api_key = api_key or os.environ.get("OPENAI_API_KEY")
         self._cache_embeddings = cache_embeddings
+        self._base_url = base_url
+        self._default_headers = default_headers
+        self._provider_type = "openai"
 
         if not self._api_key:
             raise EmbeddingError(
@@ -86,7 +94,12 @@ class OpenAIEmbeddingProvider:
                     "Install with: pip install pyagentshield[openai]"
                 ) from e
 
-            self._client = OpenAI(api_key=self._api_key)
+            kwargs: Dict[str, Any] = {"api_key": self._api_key}
+            if self._base_url:
+                kwargs["base_url"] = self._base_url
+            if self._default_headers:
+                kwargs["default_headers"] = self._default_headers
+            self._client = OpenAI(**kwargs)
 
         return self._client
 
