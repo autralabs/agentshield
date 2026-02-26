@@ -64,3 +64,9 @@ class SetupError(AgentShieldError):
     """Raised when model setup or readiness check fails."""
 
     pass
+
+
+class ThresholdUnavailableError(AgentShieldError):
+    """Raised when cloud_only mode finds no rule and fail_open=False."""
+
+    pass

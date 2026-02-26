@@ -7,7 +7,7 @@ import logging
 import shutil
 import threading
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, Optional
+from typing import TYPE_CHECKING, Dict, Optional, Tuple
 
 from pyagentshield.threshold.fingerprint import (
     create_pipeline_fingerprint,
@@ -59,6 +59,9 @@ class ThresholdManager:
         self.default_threshold = default_threshold
         self._custom_thresholds: Dict[str, float] = {}
         self._lock = threading.Lock()
+        # Per-scan thread-local override set by resolve_with_mode()
+        # so get_threshold() returns the cloud-resolved value transparently.
+        self._thread_local = threading.local()
 
         # Load cached thresholds (migrating if needed)
         self._load_cached_thresholds()
@@ -257,6 +260,12 @@ class ThresholdManager:
         Raises:
             ValueError: If no threshold found and auto_calibrate=False
         """
+        # 0. Per-scan thread-local override (set by resolve_with_mode before detect())
+        _tl = getattr(self, "_thread_local", None)
+        override = getattr(_tl, "_scan_threshold_override", None) if _tl is not None else None
+        if override is not None:
+            return override
+
         # 1. Check explicit default
         if self.default_threshold is not None:
             return self.default_threshold
@@ -485,6 +494,251 @@ class ThresholdManager:
         thresholds = dict(ThresholdRegistry.THRESHOLDS)
         thresholds.update(self._custom_thresholds)
         return thresholds
+
+    # ------------------------------------------------------------------
+    # Cloud-aware threshold resolution
+    # ------------------------------------------------------------------
+
+    def _resolve_local_with_source(
+        self,
+        fingerprint: Optional[str],
+        model_name: str,
+        embedding_provider: Optional[EmbeddingProvider] = None,
+        text_cleaner: Optional[TextCleaner] = None,
+        provider_host: Optional[str] = None,
+        allow_auto_calibrate: bool = True,
+        model_path: Optional[str] = None,
+    ) -> Tuple[Optional[float], Optional[str], bool]:
+        """
+        Resolve the local threshold chain and return (value, source, is_auto_calibrated).
+
+        source is one of the canonical tokens:
+          'local_pinned' | 'local_cache' | 'finetuned' | 'registry' | 'auto_calibrated'
+
+        Returns (None, None, False) when nothing found and allow_auto_calibrate=False.
+        """
+        # 1. Explicit pin — always wins
+        if self.default_threshold is not None:
+            return self.default_threshold, "local_pinned", False
+
+        # 2. Custom cache — fingerprint key first
+        if fingerprint and fingerprint in self._custom_thresholds:
+            return self._custom_thresholds[fingerprint], "local_cache", False
+
+        # 2b. Legacy model-name cache key (heuristic-equivalent pipelines only)
+        if model_name in self._custom_thresholds:
+            if self._legacy_custom_fallback_allowed(text_cleaner):
+                return self._custom_thresholds[model_name], "local_cache", False
+
+        # 3. Finetuned model's calibration.json
+        finetuned_threshold = self._load_finetuned_calibration(model_name, model_path)
+        if finetuned_threshold is not None:
+            return finetuned_threshold, "finetuned", False
+
+        # 4. Pre-calibrated registry (heuristic-equivalent pipelines only)
+        if self._registry_fallback_allowed(text_cleaner):
+            registry_threshold = ThresholdRegistry.get(model_name)
+            if registry_threshold is not None:
+                return registry_threshold, "registry", False
+
+        # 5. Auto-calibrate (optional)
+        if allow_auto_calibrate:
+            if embedding_provider is not None and text_cleaner is not None:
+                try:
+                    threshold = self._auto_calibrate(
+                        model_name, embedding_provider, text_cleaner, provider_host
+                    )
+                    return threshold, "auto_calibrated", True
+                except Exception as e:
+                    logger.warning("Auto-calibration failed: %s. Using fallback 0.20.", e)
+            else:
+                logger.warning(
+                    "No threshold for %s, cannot auto-calibrate (missing provider/cleaner). "
+                    "Using default 0.20.",
+                    model_name,
+                )
+            return 0.20, "auto_calibrated", True
+
+        return None, None, False
+
+    def resolve_with_mode(
+        self,
+        fingerprint: str,
+        cloud_client: Optional[object] = None,
+        environment: Optional[str] = None,
+        cloud_resolution: Optional[object] = None,
+        model_name: str = "",
+        embedding_provider: Optional[EmbeddingProvider] = None,
+        text_cleaner: Optional[TextCleaner] = None,
+        provider_host: Optional[str] = None,
+        auto_calibrate: bool = True,
+        model_path: Optional[str] = None,
+    ) -> "ThresholdDecision":
+        """
+        Resolve threshold with cloud awareness and return a ThresholdDecision.
+
+        If cloud_resolution is provided it is used directly (no HTTP call).
+        If cloud_client is provided and cloud_resolution is None, fetches the
+        cloud resolution first. This lets shield fetch once and reuse the result
+        for both settings application and mode resolution.
+
+        The resolved decision.value is stored in a thread-local so the
+        detector's get_threshold() call picks it up transparently in the
+        same scan. Call _clear_threshold_override() after detect() returns.
+
+        Args:
+            fingerprint: Full pipeline fingerprint (already computed by shield)
+            cloud_client: Optional CloudThresholdClient; used only if cloud_resolution is None
+            environment: User-supplied environment string (nullable)
+            cloud_resolution: Pre-fetched CloudResolution (skips HTTP when provided)
+            model_name / embedding_provider / text_cleaner / ...: passed to local chain
+        """
+        from pyagentshield.threshold.decision import ThresholdDecision
+
+        # --- Fetch cloud resolution (if not already provided) ---
+        if cloud_resolution is None and cloud_client is not None:
+            cloud_resolution = cloud_client.get_resolution(fingerprint, environment)
+
+        mode: str = (
+            cloud_resolution.resolution_mode if cloud_resolution else "local_only"
+        )
+        fail_open: bool = (
+            cloud_resolution.fail_open_to_local if cloud_resolution else True
+        )
+        cloud_rule = cloud_resolution.matched_rule if cloud_resolution else None
+        cloud_threshold_value: Optional[float] = (
+            cloud_rule.threshold_value if cloud_rule else None
+        )
+        cloud_rule_id: Optional[str] = cloud_rule.id if cloud_rule else None
+        cloud_rule_version: Optional[int] = cloud_rule.version if cloud_rule else None
+
+        # --- Apply mode logic ---
+        decision: ThresholdDecision
+
+        if mode == "local_only":
+            value, source, _ = self._resolve_local_with_source(
+                fingerprint, model_name, embedding_provider, text_cleaner,
+                provider_host, allow_auto_calibrate=auto_calibrate, model_path=model_path,
+            )
+            if value is None:
+                value, source = 0.20, "auto_calibrated"
+            decision = ThresholdDecision(
+                value=value, source=source, mode=mode, fingerprint=fingerprint
+            )
+
+        elif mode == "local_prefer":
+            # First try non-auto sources
+            value, source, is_auto = self._resolve_local_with_source(
+                fingerprint, model_name, embedding_provider, text_cleaner,
+                provider_host, allow_auto_calibrate=False, model_path=model_path,
+            )
+            if value is not None:
+                # Strong local signal — use it
+                decision = ThresholdDecision(
+                    value=value, source=source, mode=mode, fingerprint=fingerprint,
+                    cloud_threshold=cloud_threshold_value,
+                )
+            elif cloud_threshold_value is not None:
+                # Only auto-calibrate would give a local value; cloud has a rule → use cloud
+                decision = ThresholdDecision(
+                    value=cloud_threshold_value, source="cloud_manual", mode=mode,
+                    fingerprint=fingerprint, cloud_rule_id=cloud_rule_id,
+                    cloud_rule_version=cloud_rule_version, cloud_threshold=cloud_threshold_value,
+                )
+            else:
+                # No cloud rule → fall back to auto-calibrate
+                value, source, _ = self._resolve_local_with_source(
+                    fingerprint, model_name, embedding_provider, text_cleaner,
+                    provider_host, allow_auto_calibrate=True, model_path=model_path,
+                )
+                if value is None:
+                    value, source = 0.20, "auto_calibrated"
+                decision = ThresholdDecision(
+                    value=value, source=source, mode=mode, fingerprint=fingerprint
+                )
+
+        elif mode == "cloud_prefer":
+            if cloud_threshold_value is not None:
+                decision = ThresholdDecision(
+                    value=cloud_threshold_value, source="cloud_manual", mode=mode,
+                    fingerprint=fingerprint, cloud_rule_id=cloud_rule_id,
+                    cloud_rule_version=cloud_rule_version, cloud_threshold=cloud_threshold_value,
+                )
+            else:
+                value, source, _ = self._resolve_local_with_source(
+                    fingerprint, model_name, embedding_provider, text_cleaner,
+                    provider_host, allow_auto_calibrate=auto_calibrate, model_path=model_path,
+                )
+                if value is None:
+                    value, source = 0.20, "auto_calibrated"
+                decision = ThresholdDecision(
+                    value=value, source=source, mode=mode, fingerprint=fingerprint
+                )
+
+        elif mode == "cloud_only":
+            if cloud_threshold_value is not None:
+                decision = ThresholdDecision(
+                    value=cloud_threshold_value, source="cloud_manual", mode=mode,
+                    fingerprint=fingerprint, cloud_rule_id=cloud_rule_id,
+                    cloud_rule_version=cloud_rule_version, cloud_threshold=cloud_threshold_value,
+                )
+            elif fail_open:
+                value, source, _ = self._resolve_local_with_source(
+                    fingerprint, model_name, embedding_provider, text_cleaner,
+                    provider_host, allow_auto_calibrate=auto_calibrate, model_path=model_path,
+                )
+                if value is None:
+                    value, source = 0.20, "auto_calibrated"
+                decision = ThresholdDecision(
+                    value=value, source="local_failopen", mode=mode, fingerprint=fingerprint
+                )
+            else:
+                from pyagentshield.core.exceptions import ThresholdUnavailableError
+                raise ThresholdUnavailableError(
+                    f"No cloud threshold rule found for '{fingerprint}' "
+                    "and fail_open=False. Set fail_open=True or add a cloud rule."
+                )
+
+        elif mode == "observe":
+            # Use local chain; never apply cloud value; expose cloud_threshold for diff
+            value, source, _ = self._resolve_local_with_source(
+                fingerprint, model_name, embedding_provider, text_cleaner,
+                provider_host, allow_auto_calibrate=auto_calibrate, model_path=model_path,
+            )
+            if value is None:
+                value, source = 0.20, "auto_calibrated"
+            decision = ThresholdDecision(
+                value=value, source=source, mode=mode, fingerprint=fingerprint,
+                cloud_threshold=cloud_threshold_value,
+                cloud_rule_id=cloud_rule_id,
+                cloud_rule_version=cloud_rule_version,
+            )
+
+        else:
+            # Unknown mode — safe fallback to local_only
+            logger.warning("Unknown threshold_resolution_mode '%s'; falling back to local_only", mode)
+            value, source, _ = self._resolve_local_with_source(
+                fingerprint, model_name, embedding_provider, text_cleaner,
+                provider_host, allow_auto_calibrate=auto_calibrate, model_path=model_path,
+            )
+            if value is None:
+                value, source = 0.20, "auto_calibrated"
+            decision = ThresholdDecision(
+                value=value, source=source, mode="local_only", fingerprint=fingerprint
+            )
+
+        # Store as thread-local so get_threshold() transparently returns decision.value
+        # within the same scan. Shield must call _clear_threshold_override() after detect().
+        _tl = getattr(self, "_thread_local", None)
+        if _tl is not None:
+            _tl._scan_threshold_override = decision.value
+        return decision
+
+    def _clear_threshold_override(self) -> None:
+        """Clear the per-scan thread-local threshold override. Call after detect() returns."""
+        _tl = getattr(self, "_thread_local", None)
+        if _tl is not None:
+            _tl._scan_threshold_override = None
 
     def clear_custom_thresholds(self) -> None:
         """Clear all custom thresholds."""

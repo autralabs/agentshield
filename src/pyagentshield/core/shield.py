@@ -82,6 +82,36 @@ class AgentShield:
         self._threshold_manager: Optional[ThresholdManager] = None
         self._detector: Optional[BaseDetector] = None
 
+        # Cloud threshold client (None when threshold_sync disabled or no API key)
+        self._cloud_client = None
+        if self.config.threshold_sync.enabled and self.config.telemetry.api_key:
+            from pyagentshield.remote.client import CloudThresholdClient
+            self._cloud_client = CloudThresholdClient(
+                api_key=self.config.telemetry.api_key,
+                resolve_endpoint=self.config.threshold_sync.resolve_endpoint,
+                report_endpoint=self.config.threshold_sync.report_endpoint,
+                ttl=self.config.threshold_sync.ttl_seconds,
+                report_debounce_seconds=self.config.threshold_sync.report_debounce_seconds,
+                report_enabled=self.config.threshold_sync.report_enabled,
+                timeout_seconds=self.config.threshold_sync.timeout_ms / 1000,
+            )
+
+        # Track which behavioral settings were explicitly configured at init time.
+        # Used by _apply_cloud_project_settings to preserve local-explicit-wins rule.
+        import os
+        self._explicit_confidence_threshold: bool = (
+            "confidence_threshold" in self.config.behavior.model_fields_set
+            or os.environ.get("AGENTSHIELD_BEHAVIOR__CONFIDENCE_THRESHOLD") is not None
+        )
+        self._explicit_on_detect: bool = (
+            "on_detect" in self.config.behavior.model_fields_set
+            or os.environ.get("AGENTSHIELD_BEHAVIOR__ON_DETECT") is not None
+        )
+        self._explicit_cleaning_method: bool = (
+            "method" in self.config.cleaning.model_fields_set
+            or os.environ.get("AGENTSHIELD_CLEANING__METHOD") is not None
+        )
+
     def _setup_logging(self) -> None:
         """Configure logging based on config."""
         level = getattr(logging, self.config.logging.level)
@@ -119,6 +149,30 @@ class AgentShield:
         if self._detector is None:
             self._detector = self._create_detector()
         return self._detector
+
+    def _apply_cloud_project_settings(self, settings: dict) -> None:
+        """Apply project_settings from cloud resolution, respecting local-explicit-wins."""
+        cloud_confidence = settings.get("confidence_threshold")
+        cloud_on_detect = settings.get("on_detect")
+        cloud_cleaning = settings.get("cleaning_method")
+
+        if cloud_confidence is not None and not self._explicit_confidence_threshold:
+            try:
+                self.config.behavior.confidence_threshold = float(cloud_confidence)
+            except (TypeError, ValueError):
+                pass
+
+        if cloud_on_detect is not None and not self._explicit_on_detect:
+            if cloud_on_detect in ("block", "warn", "flag", "filter"):
+                self.config.behavior.on_detect = cloud_on_detect
+
+        if cloud_cleaning is not None and not self._explicit_cleaning_method:
+            if cloud_cleaning in ("heuristic", "llm", "finetuned", "hybrid"):
+                if cloud_cleaning != self.config.cleaning.method:
+                    self.config.cleaning.method = cloud_cleaning
+                    # Rebuild cleaner and detector with the new method on next access
+                    self._text_cleaner = None
+                    self._detector = None
 
     def _create_embedding_provider(self) -> EmbeddingProvider:
         """Create embedding provider based on config."""
@@ -254,6 +308,10 @@ class AgentShield:
     def _scan_single(self, text: str) -> ScanResult:
         """Scan a single text."""
         from pyagentshield.detectors.base import DetectionContext
+        from pyagentshield.core.exceptions import ThresholdUnavailableError
+
+        # Clear any stale thread-local override from a previous scan that errored out
+        self.threshold_manager._clear_threshold_override()
 
         # Create detection context
         context = DetectionContext(
@@ -261,8 +319,45 @@ class AgentShield:
             cleaned_text=None,  # Will be computed by detector if needed
         )
 
-        # Run detection
-        signal = self.detector.detect(text, context)
+        # Cloud-aware threshold resolution (sets thread-local override for detector)
+        decision = None
+        try:
+            fingerprint = self.threshold_manager._build_fingerprint(
+                model_name=self.embedding_provider.model_name,
+                embedding_provider=self.embedding_provider,
+                text_cleaner=self.text_cleaner,
+            ) or self.embedding_provider.model_name
+
+            # Fetch cloud resolution once — used for both settings and mode
+            cloud_resolution = None
+            if self._cloud_client is not None:
+                cloud_resolution = self._cloud_client.get_resolution(
+                    fingerprint, environment=self.config.telemetry.environment
+                )
+
+            # Apply cloud project_settings (local-explicit-wins)
+            if cloud_resolution is not None and cloud_resolution.project_settings:
+                self._apply_cloud_project_settings(cloud_resolution.project_settings)
+
+            decision = self.threshold_manager.resolve_with_mode(
+                fingerprint=fingerprint,
+                cloud_resolution=cloud_resolution,  # reuse; no second HTTP call
+                environment=self.config.telemetry.environment,
+                model_name=self.embedding_provider.model_name,
+                embedding_provider=self.embedding_provider,
+                text_cleaner=self.text_cleaner,
+            )
+        except ThresholdUnavailableError:
+            raise  # cloud_only + fail_open=False — propagate intentionally
+        except Exception:
+            logger.debug("Cloud threshold resolution failed; falling back to local chain", exc_info=True)
+
+        # Run detection; always clear thread-local override, even if detect() raises
+        signal = None
+        try:
+            signal = self.detector.detect(text, context)
+        finally:
+            self.threshold_manager._clear_threshold_override()
 
         # Build result
         is_suspicious = signal.score >= self.config.behavior.confidence_threshold
@@ -311,10 +406,40 @@ class AgentShield:
                 on_detect=self.config.behavior.on_detect,
                 project=self.config.telemetry.project,
                 environment=self.config.telemetry.environment,
+                pipeline_fingerprint=decision.fingerprint if decision else None,
+                threshold_source=decision.source if decision else None,
+                threshold_mode=decision.mode if decision else None,
+                threshold_version=decision.cloud_rule_version if decision else None,
+                embedding_model_resolved=self.embedding_provider.model_name,
             )
             self._telemetry.record(event)
         except Exception:
             logger.debug("Failed to record telemetry", exc_info=True)
+
+        # Report cloud threshold observation (debounced, best-effort)
+        if self._cloud_client is not None and decision is not None:
+            try:
+                import pyagentshield as _pkg
+                observation = {
+                    "pipeline_fingerprint": decision.fingerprint,
+                    "environment": self.config.telemetry.environment,
+                    "embedding_model": self.embedding_provider.model_name,
+                    "cleaning_method": self.config.cleaning.method,
+                    "local_threshold": decision.value if decision.source != "cloud_manual" else None,
+                    "effective_threshold": decision.value,
+                    "effective_source": decision.source,
+                    "effective_mode": decision.mode,
+                    "cloud_rule_id": decision.cloud_rule_id,
+                    "cloud_threshold": decision.cloud_threshold,
+                    "sdk_version": _pkg.__version__,
+                }
+                self._cloud_client.report_if_due(
+                    decision.fingerprint,
+                    self.config.telemetry.environment,
+                    observation,
+                )
+            except Exception:
+                logger.debug("Failed to report cloud threshold observation", exc_info=True)
 
         return result
 
