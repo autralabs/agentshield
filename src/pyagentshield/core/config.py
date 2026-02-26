@@ -148,6 +148,29 @@ class TelemetryConfig(BaseModel):
     batch_size: int = 50
 
 
+class ThresholdSyncConfig(BaseModel):
+    """
+    Configuration for cloud threshold sync.
+
+    Explicit opt-in only: enabled=False by default. Sync only operates
+    when both threshold_sync.enabled=True AND telemetry.api_key is set.
+    This preserves OSS predictability — developers who only want telemetry
+    are not surprised by config sync behavior.
+
+    Env var examples:
+        AGENTSHIELD_THRESHOLD_SYNC__ENABLED=true
+        AGENTSHIELD_THRESHOLD_SYNC__RESOLVE_ENDPOINT=https://...
+    """
+
+    enabled: bool = False  # Must be explicitly set True. Never auto-enable.
+    resolve_endpoint: str = "https://api.agentshield.cloud/v1/thresholds/resolve"
+    report_endpoint: str = "https://api.agentshield.cloud/v1/thresholds/report"
+    timeout_ms: int = 3000
+    ttl_seconds: int = 300          # Client-side default; overridden by server response TTL
+    report_enabled: bool = True     # Set to False to disable observation write-back
+    report_debounce_seconds: int = 60  # Min seconds between reports per fingerprint
+
+
 class ShieldConfig(BaseSettings):
     """
     Main configuration for AgentShield.
@@ -201,6 +224,7 @@ class ShieldConfig(BaseSettings):
     performance: PerformanceConfig = Field(default_factory=PerformanceConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     telemetry: TelemetryConfig = Field(default_factory=TelemetryConfig)
+    threshold_sync: ThresholdSyncConfig = Field(default_factory=ThresholdSyncConfig)
 
     def model_post_init(self, __context: Any) -> None:
         """Handle backward compatibility after initialization."""

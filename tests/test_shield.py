@@ -101,6 +101,148 @@ class TestShieldScan:
         assert info["method"] == "heuristic"
 
 
+class TestShieldCloudThreshold:
+    """Tests for cloud-aware threshold resolution in _scan_single."""
+
+    def _make_shield_with_signal(self, score: float = 0.1):
+        """Return a shield whose detector returns a fixed signal."""
+        from pyagentshield.core.results import DetectionSignal
+
+        shield = AgentShield()
+        mock_detector = MagicMock()
+        mock_detector.detect.return_value = DetectionSignal(
+            score=score,
+            confidence=score,
+            metadata={"drift": score, "threshold": 0.2, "model": "mock", "cleaning_method": "heuristic"},
+        )
+        shield._detector = mock_detector
+        return shield
+
+    def test_cloud_only_fail_closed_raises(self):
+        """cloud_only + fail_open=False must raise ThresholdUnavailableError, not silently fall back."""
+        from pyagentshield.core.exceptions import ThresholdUnavailableError
+        from pyagentshield.remote.client import CloudResolution
+
+        shield = self._make_shield_with_signal()
+
+        # Inject a mock cloud client that returns cloud_only + fail_open=False + no rule
+        mock_client = MagicMock()
+        mock_client.get_resolution.return_value = CloudResolution(
+            resolution_mode="cloud_only",
+            fail_open_to_local=False,
+            ttl_seconds=300,
+            matched_rule=None,
+            project_settings={},
+        )
+        shield._cloud_client = mock_client
+
+        with pytest.raises(ThresholdUnavailableError):
+            shield.scan("test text")
+
+    def test_override_cleared_when_detect_raises(self):
+        """Thread-local threshold override must be cleared even if detect() raises."""
+        shield = AgentShield()
+
+        mock_detector = MagicMock()
+        mock_detector.detect.side_effect = RuntimeError("detector exploded")
+        shield._detector = mock_detector
+
+        # Scan raises, but override must be gone afterwards
+        with pytest.raises(RuntimeError, match="detector exploded"):
+            shield.scan("any text")
+
+        # Override is cleared — subsequent get_threshold on the manager returns None (no stale value)
+        override = getattr(
+            getattr(shield.threshold_manager, "_thread_local", None),
+            "_scan_threshold_override",
+            None,
+        )
+        assert override is None
+
+    def test_cloud_settings_applied_when_not_explicit(self):
+        """confidence_threshold and on_detect from cloud are applied when user has not set them."""
+        from pyagentshield.remote.client import CloudResolution
+
+        shield = self._make_shield_with_signal()
+        # Confirm defaults
+        assert shield.config.behavior.confidence_threshold == 0.5
+        assert shield.config.behavior.on_detect == "flag"
+
+        mock_client = MagicMock()
+        mock_client.get_resolution.return_value = CloudResolution(
+            resolution_mode="local_only",
+            fail_open_to_local=True,
+            ttl_seconds=300,
+            matched_rule=None,
+            project_settings={"confidence_threshold": 0.75, "on_detect": "block"},
+        )
+        shield._cloud_client = mock_client
+
+        shield.scan("test text")
+
+        assert shield.config.behavior.confidence_threshold == pytest.approx(0.75)
+        assert shield.config.behavior.on_detect == "block"
+
+    def test_cloud_settings_not_applied_when_explicit(self):
+        """confidence_threshold set by user is NOT overridden by cloud."""
+        from pyagentshield.remote.client import CloudResolution
+
+        shield = AgentShield(config={"behavior": {"confidence_threshold": 0.3, "on_detect": "warn"}})
+        from pyagentshield.core.results import DetectionSignal
+        mock_detector = MagicMock()
+        mock_detector.detect.return_value = DetectionSignal(
+            score=0.1, confidence=0.1,
+            metadata={"drift": 0.1, "threshold": 0.2, "model": "m", "cleaning_method": "heuristic"},
+        )
+        shield._detector = mock_detector
+
+        mock_client = MagicMock()
+        mock_client.get_resolution.return_value = CloudResolution(
+            resolution_mode="local_only",
+            fail_open_to_local=True,
+            ttl_seconds=300,
+            matched_rule=None,
+            project_settings={"confidence_threshold": 0.99, "on_detect": "block"},
+        )
+        shield._cloud_client = mock_client
+
+        shield.scan("test text")
+
+        # Explicit local values win
+        assert shield.config.behavior.confidence_threshold == pytest.approx(0.3)
+        assert shield.config.behavior.on_detect == "warn"
+
+    def test_cloud_cleaning_method_change_rebuilds_detector(self):
+        """Changing cleaning_method via cloud settings invalidates cached cleaner and detector."""
+        from pyagentshield.remote.client import CloudResolution
+
+        shield = self._make_shield_with_signal()
+        # Force lazy-init so they're populated
+        _ = shield.text_cleaner
+        _ = shield.detector
+
+        assert shield.config.cleaning.method == "heuristic"
+        original_cleaner = shield._text_cleaner
+        original_detector = shield._detector
+
+        mock_client = MagicMock()
+        mock_client.get_resolution.return_value = CloudResolution(
+            resolution_mode="local_only",
+            fail_open_to_local=True,
+            ttl_seconds=300,
+            matched_rule=None,
+            project_settings={"cleaning_method": "llm"},
+        )
+        shield._cloud_client = mock_client
+
+        shield.scan("test text")
+
+        assert shield.config.cleaning.method == "llm"
+        # Cleaner and detector caches are invalidated
+        assert shield._text_cleaner is None or shield._text_cleaner is not original_cleaner
+        assert shield._detector is None or shield._detector is not original_detector
+
+
 class TestShieldCleanerCreation:
     def test_creates_heuristic_cleaner(self):
         shield = AgentShield(config={"cleaning": {"method": "heuristic"}})

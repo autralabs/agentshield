@@ -42,6 +42,13 @@ class ScanEvent:
     project: Optional[str] = None
     environment: Optional[str] = None
 
+    # Threshold provenance (populated when threshold_sync is active)
+    pipeline_fingerprint: Optional[str] = None
+    threshold_source: Optional[str] = None
+    threshold_mode: Optional[str] = None
+    threshold_version: Optional[int] = None
+    embedding_model_resolved: Optional[str] = None
+
     def to_dict(self) -> Dict[str, Any]:
         """Serialize to a JSON-safe dictionary."""
         return {
@@ -59,4 +66,9 @@ class ScanEvent:
             "on_detect": self.on_detect,
             "project": self.project,
             "environment": self.environment,
+            "pipeline_fingerprint": self.pipeline_fingerprint,
+            "threshold_source": self.threshold_source,
+            "threshold_mode": self.threshold_mode,
+            "threshold_version": self.threshold_version,
+            "embedding_model_resolved": self.embedding_model_resolved,
         }

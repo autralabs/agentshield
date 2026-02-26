@@ -236,6 +236,40 @@ class TestThresholdManager:
                 auto_calibrate=False,
             )
 
+    def test_resolve_with_mode_uses_prefetched_resolution(self, tmp_cache_dir):
+        """resolve_with_mode(cloud_resolution=...) uses provided resolution; cloud_client is NOT called."""
+        from unittest.mock import MagicMock
+        from pyagentshield.remote.client import CloudResolution, CloudRule
+
+        manager = ThresholdManager(cache_dir=tmp_cache_dir)
+        mock_client = MagicMock()  # Should never be called
+
+        rule = CloudRule(
+            id="rule-abc",
+            pipeline_fingerprint="local::all-MiniLM-L6-v2::heuristic",
+            threshold_value=0.27,
+            version=1,
+        )
+        prefetched = CloudResolution(
+            resolution_mode="cloud_prefer",
+            fail_open_to_local=True,
+            ttl_seconds=300,
+            matched_rule=rule,
+            project_settings={},
+        )
+
+        decision = manager.resolve_with_mode(
+            fingerprint="local::all-MiniLM-L6-v2::heuristic",
+            cloud_client=mock_client,
+            cloud_resolution=prefetched,
+        )
+
+        # Cloud client was never called — result came from pre-fetched resolution
+        mock_client.get_resolution.assert_not_called()
+        assert decision.value == pytest.approx(0.27)
+        assert decision.source == "cloud_manual"
+        assert decision.cloud_rule_id == "rule-abc"
+
     def test_legacy_custom_skip_logs_reason(self, tmp_cache_dir, caplog):
         """When legacy key is skipped for non-heuristic pipeline, reason is logged."""
         from tests.conftest import MockEmbeddingProvider, MockTextCleaner
